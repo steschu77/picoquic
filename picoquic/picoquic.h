@@ -217,6 +217,8 @@ typedef struct st_picoquic_packet_t {
     struct st_picoquic_packet_t* previous_packet;
     struct st_picoquic_packet_t* next_packet;
     struct st_picoquic_path_t * send_path;
+    struct st_picoquic_frame_t * first_frame;
+    struct st_picoquic_frame_t * last_frame;
     uint64_t sequence_number;
     uint64_t send_time;
     size_t length;

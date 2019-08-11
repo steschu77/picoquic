@@ -60,6 +60,30 @@ typedef uint8_t* (*skip_frame_fn)(uint8_t* bytes, const uint8_t* bytes_max);
  * Helper utilities
  * ****************************************************/
 
+picoquic_frame_t * append_frame(picoquic_frame_t * prev, picoquic_frame_type_enum_t ftype, size_t length, uint64_t stream_id)
+{
+    picoquic_frame_t * frame = (picoquic_frame_t*)malloc(sizeof(picoquic_frame_t));
+    if (frame != NULL) {
+        if (prev != NULL) {
+            prev->next = frame;
+        }
+        frame->ftype = ftype;
+        frame->length = length;
+        frame->stream_id = stream_id;
+        frame->next = NULL;
+    }
+    return frame;
+}
+
+void delete_frames(picoquic_frame_t* first)
+{
+    for (picoquic_frame_t* frame = first; frame != NULL; ) {
+        picoquic_frame_t* tmp = frame;
+        frame = frame->next;
+        free(tmp);
+    }
+}
+
 /* Skip and decode function.
  * These functions return NULL in case of a failure (insufficient buffer).
  */
@@ -1454,7 +1478,7 @@ static int picoquic_prepare_stream_frame_header(uint8_t* bytes, size_t bytes_max
     return ret;
 }
 
-int picoquic_prepare_stream_frame(picoquic_cnx_t* cnx, picoquic_stream_head_t* stream,
+int picoquic_prepare_stream_frame(picoquic_cnx_t* cnx, picoquic_packet_t* packet, picoquic_stream_head_t* stream,
     uint8_t* bytes, size_t bytes_max, size_t* consumed, int* is_still_active)
 {
     int ret = 0;
@@ -1607,6 +1631,11 @@ int picoquic_prepare_stream_frame(picoquic_cnx_t* cnx, picoquic_stream_head_t* s
                 /* mark the stream as unblocked since we sent something */
                 stream->stream_data_blocked_sent = 0;
                 cnx->sent_blocked_frame = 0;
+
+                packet->last_frame = append_frame(packet->last_frame, picoquic_frame_type_stream_range_min, length, stream->stream_id);
+                if (packet->first_frame == NULL) {
+                    packet->first_frame = packet->last_frame;
+                }
             }
         }
     }

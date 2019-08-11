@@ -1878,6 +1878,21 @@ void picoquic_packet_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_p
     bytewrite_vint(ps_msg, pck->length);
     bytewrite_vint(ps_msg, pck->ptype);
 
+    uint64_t nb_frames = 0;
+    for (picoquic_frame_t* frame = pck->first_frame; frame != NULL; frame = frame->next) {
+        nb_frames++;
+    }
+
+    bytewrite_vint(ps_msg, nb_frames);
+    for (picoquic_frame_t* frame = pck->first_frame; frame != NULL; frame = frame->next) {
+        bytewrite_vint(ps_msg, frame->ftype);
+        bytewrite_vint(ps_msg, frame->length);
+        if (frame->ftype >= picoquic_frame_type_stream_range_min &&
+            frame->ftype <= picoquic_frame_type_stream_range_max) {
+            bytewrite_vint(ps_msg, frame->stream_id);
+        }
+    }
+
     bytestream_buf stream_head;
     bytestream * ps_head = bytewriter_init(&stream_head);
     bytewrite_int32(ps_head, picoquic_log_event_packet_sent + rxtx);
@@ -1899,6 +1914,9 @@ void picoquic_packetheader_dump(picoquic_cnx_t* cnx, uint64_t current_time, pico
     bytewrite_vint(ps_msg, 77);
     bytewrite_vint(ps_msg, pck->payload_length);
     bytewrite_vint(ps_msg, pck->ptype);
+
+    uint64_t nb_frames = 0;
+    bytewrite_vint(ps_msg, nb_frames);
 
     bytestream_buf stream_head;
     bytestream * ps_head = bytewriter_init(&stream_head);

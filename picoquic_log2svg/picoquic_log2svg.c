@@ -113,15 +113,36 @@ int log_event_cb(uint32_t id, bytestream* s, FILE* svg)
     {
         const char* dir = id == picoquic_log_event_packet_sent ? "out" : "in";
         uint64_t time, seq_no, length, type;
+        int y_pos = 32 + event_height * nb;
 
         ret |= byteread_vint(s, &time);
         ret |= byteread_vint(s, &seq_no);
         ret |= byteread_vint(s, &length);
         ret |= byteread_vint(s, &type);
-        fprintf(svg, "  <use x=\"%d\" y=\"%d\" xlink:href=\"#packet-%s\" />\n", 40, 32 + event_height *nb, dir);
-        fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"start\" class=\"arw\">%I64d - %I64d</text>\n", 55, 30 + event_height * nb, type, length);
-        fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"end\" class=\"seq_%s\">%I64d</text>\n", 35, 28 + event_height * nb, dir, seq_no);
-        fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"end\" class=\"time\">%I64d</text>\n", 35, 40 + event_height * nb, time);
+
+        fprintf(svg, "  <use x=\"%d\" y=\"%d\" xlink:href=\"#packet-%s\" />\n", 40, y_pos, dir);
+        fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"end\" class=\"arw\">%I64d</text>\n", 80, y_pos - 2, length);
+        fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"end\" class=\"seq_%s\">%I64d</text>\n", 35, y_pos - 4, dir, seq_no);
+        fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"end\" class=\"time\">%I64d</text>\n", 35, y_pos + 8, time);
+
+        int x_pos = 85;
+        uint64_t nb_frames = 0;
+        ret |= byteread_vint(s, &nb_frames);
+        for (uint64_t i = 0; i < nb_frames; ++i) {
+            uint64_t ftype, length, stream_id;
+            ret |= byteread_vint(s, &ftype);
+            ret |= byteread_vint(s, &length);
+            if (ftype >= picoquic_frame_type_stream_range_min &&
+                ftype <= picoquic_frame_type_stream_range_max) {
+                ret |= byteread_vint(s, &stream_id);
+                fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"start\" class=\"frm\">[%I64d: %I64d]</text>\n", x_pos, y_pos - 2, stream_id, length);
+                x_pos += 40;
+            }
+            else {
+                fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"start\" class=\"arw\">%I64d: %I64d</text>\n", x_pos, y_pos - 2, ftype, length);
+                x_pos += 30;
+            }
+        }
         nb++;
     }
     return ret;

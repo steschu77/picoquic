@@ -5,6 +5,7 @@
     .seq_out { font: 10px sans-serif; fill: light-blue; }
     .time { font: 10px sans-serif; fill: green; }
     .arw { font: 10px sans-serif; }
+    .frm { font: 10px sans-serif; fill: teal }
   </style>
   <rect x="0" y="0" width="400" height="20000" fill="white" stroke-width="4" stroke="pink" />
   <defs>

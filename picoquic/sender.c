@@ -295,6 +295,11 @@ picoquic_packet_t* picoquic_create_packet(picoquic_quic_t * quic)
 void picoquic_recycle_packet(picoquic_quic_t * quic, picoquic_packet_t* packet)
 {
     if (packet != NULL) {
+
+        delete_frames(packet->first_frame);
+        packet->first_frame = NULL;
+        packet->last_frame = NULL;
+
         if (quic->nb_packets_in_pool >= PICOQUIC_MAX_PACKETS_IN_POOL) {
             free(packet);
         }
@@ -1443,7 +1448,7 @@ int picoquic_prepare_packet_0rtt(picoquic_cnx_t* cnx, picoquic_path_t * path_x, 
         /* Encode the stream frame, or frames */
         while (stream != NULL) {
             int is_still_active = 0;
-            ret = picoquic_prepare_stream_frame(cnx, stream, &bytes[length],
+            ret = picoquic_prepare_stream_frame(cnx, packet, stream, &bytes[length],
                 send_buffer_max - checksum_overhead - length, &data_bytes, &is_still_active);
 
             if (ret == 0) {
@@ -2668,7 +2673,7 @@ int picoquic_prepare_packet_ready(picoquic_cnx_t* cnx, picoquic_path_t * path_x,
                         /* Encode the stream frame, or frames */
                         while (stream != NULL) {
                             int is_still_active = 0;
-                            ret = picoquic_prepare_stream_frame(cnx, stream, &bytes[length],
+                            ret = picoquic_prepare_stream_frame(cnx, packet, stream, &bytes[length],
                                 send_buffer_min_max - checksum_overhead - length, &data_bytes, &is_still_active);
 
                             if (ret == 0) {
