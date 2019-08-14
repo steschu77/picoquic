@@ -1740,6 +1740,7 @@ int picoquic_incoming_encrypted(
 
             if (ret == 0 && cnx->cc_log != NULL) {
                 picoquic_cc_dump(cnx, current_time);
+                picoquic_packetheader_dump(cnx, current_time, ph, 1);
             }
         }
     }

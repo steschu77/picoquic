@@ -1040,7 +1040,10 @@ typedef enum {
 /* Handling of cc_log */
 int picoquic_open_cc_dump(picoquic_cnx_t * cnx);
 void picoquic_close_cc_dump(picoquic_cnx_t * cnx);
-void picoquic_cc_dump(picoquic_cnx_t * cnx, uint64_t current_time); 
+void picoquic_packet_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_packet_t* pck, int rxtx);
+void picoquic_packetheader_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_packet_header* pck, int rxtx);
+void picoquic_cc_dump(picoquic_cnx_t * cnx, uint64_t current_time);
+FILE* picoquic_open_cc_log_file_for_read(char const* bin_cc_log_name, uint32_t* log_time);
 int picoquic_cc_log_file_to_csv(char const * bin_cc_log_name, char const * csv_cc_log_name);
 
 /* handling of ACK logic */

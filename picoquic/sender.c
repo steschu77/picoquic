@@ -2783,6 +2783,7 @@ int picoquic_prepare_packet_ready(picoquic_cnx_t* cnx, picoquic_path_t * path_x,
 
         if (ret == 0 && cnx->cc_log != NULL) {
             picoquic_cc_dump(cnx, current_time);
+            picoquic_packet_dump(cnx, current_time, packet, 0);
         }
     }
 

@@ -1865,6 +1865,50 @@ void picoquic_close_cc_dump(picoquic_cnx_t * cnx)
     cnx->cc_log = picoquic_file_close(cnx->cc_log);
 }
 
+void picoquic_packet_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_packet_t* pck, int rxtx)
+{
+    if (cnx->cc_log == NULL) {
+        return;
+    }
+
+    bytestream_buf stream_msg;
+    bytestream * ps_msg = bytewriter_init(&stream_msg);
+    bytewrite_vint(ps_msg, current_time - cnx->start_time);
+    bytewrite_vint(ps_msg, pck->sequence_number);
+    bytewrite_vint(ps_msg, pck->length);
+    bytewrite_vint(ps_msg, pck->ptype);
+
+    bytestream_buf stream_head;
+    bytestream * ps_head = bytewriter_init(&stream_head);
+    bytewrite_int32(ps_head, picoquic_log_event_packet_sent + rxtx);
+    bytewrite_int32(ps_head, (uint32_t)bytestream_length(ps_msg));
+
+    (void)fwrite(bytestream_data(ps_head), bytestream_length(ps_head), 1, cnx->cc_log);
+    (void)fwrite(bytestream_data(ps_msg), bytestream_length(ps_msg), 1, cnx->cc_log);
+}
+
+void picoquic_packetheader_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_packet_header* pck, int rxtx)
+{
+    if (cnx->cc_log == NULL) {
+        return;
+    }
+
+    bytestream_buf stream_msg;
+    bytestream * ps_msg = bytewriter_init(&stream_msg);
+    bytewrite_vint(ps_msg, current_time - cnx->start_time);
+    bytewrite_vint(ps_msg, 77);
+    bytewrite_vint(ps_msg, pck->payload_length);
+    bytewrite_vint(ps_msg, pck->ptype);
+
+    bytestream_buf stream_head;
+    bytestream * ps_head = bytewriter_init(&stream_head);
+    bytewrite_int32(ps_head, picoquic_log_event_packet_sent + rxtx);
+    bytewrite_int32(ps_head, (uint32_t)bytestream_length(ps_msg));
+
+    (void)fwrite(bytestream_data(ps_head), bytestream_length(ps_head), 1, cnx->cc_log);
+    (void)fwrite(bytestream_data(ps_msg), bytestream_length(ps_msg), 1, cnx->cc_log);
+}
+
 /*
  * Log the state of the congestion management, retransmission, etc.
  * Call either just after processing a received packet, or just after
@@ -2057,9 +2101,9 @@ int picoquic_cc_log_file_to_csv(char const * bin_cc_log_name, char const * csv_c
                         time, sequence, (int64_t)highest_ack, high_ack_time, last_time_ack,
                         cwin, SRTT, RTT_min, Send_MTU, pacing_packet_time,
                         nb_retrans, nb_spurious, cwin_blkd, flow_blkd, stream_blkd) <= 0) {
-                        ret = -1;
-                        break;
-                    }
+                            ret = -1;
+                            break;
+                        }
                     if (ret == 0) {
                         if (fprintf(csv_log, "\n") <= 0) {
                             DBG_PRINTF("Error writing data on file %s.\n", csv_cc_log_name);
