@@ -3220,10 +3220,10 @@ uint8_t* picoquic_decode_max_streams_frame(picoquic_cnx_t* cnx, uint8_t* bytes, 
  * Sending of miscellaneous frames
  */
 
-int picoquic_prepare_first_misc_frame(picoquic_cnx_t* cnx, uint8_t* bytes,
+int picoquic_prepare_first_misc_frame(picoquic_cnx_t* cnx, picoquic_packet_t* packet, uint8_t* bytes,
                                       size_t bytes_max, size_t* consumed)
 {
-    int ret = picoquic_prepare_misc_frame(cnx->first_misc_frame, bytes, bytes_max, consumed);
+    int ret = picoquic_prepare_misc_frame(packet, cnx->first_misc_frame, bytes, bytes_max, consumed);
 
     if (ret == 0) {
         picoquic_misc_frame_header_t* misc_frame = cnx->first_misc_frame;
@@ -3234,7 +3234,7 @@ int picoquic_prepare_first_misc_frame(picoquic_cnx_t* cnx, uint8_t* bytes,
     return ret;
 }
 
-int picoquic_prepare_misc_frame(picoquic_misc_frame_header_t* misc_frame, uint8_t* bytes,
+int picoquic_prepare_misc_frame(picoquic_packet_t* packet, picoquic_misc_frame_header_t* misc_frame, uint8_t* bytes,
                                 size_t bytes_max, size_t* consumed)
 {
     int ret = 0;
@@ -3246,6 +3246,11 @@ int picoquic_prepare_misc_frame(picoquic_misc_frame_header_t* misc_frame, uint8_
         uint8_t* frame = ((uint8_t*)misc_frame) + sizeof(picoquic_misc_frame_header_t);
         memcpy(bytes, frame, misc_frame->length);
         *consumed = misc_frame->length;
+
+        packet->last_frame = append_frame(packet->last_frame, bytes[0], misc_frame->length, 0);
+        if (packet->first_frame == NULL) {
+            packet->first_frame = packet->last_frame;
+        }
     }
 
     return ret;
@@ -3255,7 +3260,7 @@ int picoquic_prepare_misc_frame(picoquic_misc_frame_header_t* misc_frame, uint8_
  * Path Challenge and Response frames
  */
 
-int picoquic_prepare_path_challenge_frame(uint8_t* bytes,
+int picoquic_prepare_path_challenge_frame(picoquic_packet_t* packet, uint8_t* bytes,
     size_t bytes_max, size_t* consumed, uint64_t challenge)
 {
     int ret = 0;
@@ -3266,6 +3271,12 @@ int picoquic_prepare_path_challenge_frame(uint8_t* bytes,
         bytes[0] = picoquic_frame_type_path_challenge;
         picoformat_64(bytes + 1, challenge);
         *consumed = 1 + 8;
+
+        packet->last_frame = append_frame(packet->last_frame, picoquic_frame_type_path_challenge, 1 + 8, 0);
+        if (packet->first_frame == NULL) {
+            packet->first_frame = packet->last_frame;
+        }
+
     }
 
     return ret;
@@ -3306,7 +3317,7 @@ uint8_t* picoquic_decode_path_challenge_frame(picoquic_cnx_t* cnx, uint8_t* byte
     return bytes;
 }
 
-int picoquic_prepare_path_response_frame(uint8_t* bytes,
+int picoquic_prepare_path_response_frame(picoquic_packet_t* packet, uint8_t* bytes,
     size_t bytes_max, size_t* consumed, uint64_t challenge)
 {
     int ret = 0;
@@ -3318,6 +3329,11 @@ int picoquic_prepare_path_response_frame(uint8_t* bytes,
         bytes[0] = picoquic_frame_type_path_response;
         picoformat_64(bytes + 1, challenge);
         *consumed = 1 + 8;
+
+        packet->last_frame = append_frame(packet->last_frame, picoquic_frame_type_path_response, 1 + 8, 0);
+        if (packet->first_frame == NULL) {
+            packet->first_frame = packet->last_frame;
+        }
     }
 
     return ret;

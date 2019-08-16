@@ -1136,9 +1136,9 @@ int picoquic_prepare_max_streams_frame_if_needed(picoquic_cnx_t* cnx,
     uint8_t* bytes, size_t bytes_max, size_t* consumed);
 void picoquic_clear_stream(picoquic_stream_head_t* stream);
 void picoquic_delete_stream(picoquic_cnx_t * cnx, picoquic_stream_head_t * stream);
-int picoquic_prepare_path_challenge_frame(uint8_t* bytes,
+int picoquic_prepare_path_challenge_frame(picoquic_packet_t* packet, uint8_t* bytes,
     size_t bytes_max, size_t* consumed, uint64_t challenge);
-int picoquic_prepare_path_response_frame(uint8_t* bytes,
+int picoquic_prepare_path_response_frame(picoquic_packet_t* packet, uint8_t* bytes,
     size_t bytes_max, size_t* consumed, uint64_t challenge);
 int picoquic_prepare_new_connection_id_frame(picoquic_cnx_t * cnx, picoquic_path_t * path_x,
     uint8_t* bytes, size_t bytes_max, size_t* consumed);
@@ -1146,9 +1146,9 @@ int picoquic_prepare_blocked_frames(picoquic_cnx_t* cnx, uint8_t* bytes, size_t 
 int picoquic_queue_retire_connection_id_frame(picoquic_cnx_t * cnx, uint64_t sequence);
 int picoquic_queue_new_token_frame(picoquic_cnx_t * cnx, uint8_t * token, size_t token_length);
 
-int picoquic_prepare_first_misc_frame(picoquic_cnx_t* cnx, uint8_t* bytes,
+int picoquic_prepare_first_misc_frame(picoquic_cnx_t* cnx, picoquic_packet_t* packet, uint8_t* bytes,
     size_t bytes_max, size_t* consumed);
-int picoquic_prepare_misc_frame(picoquic_misc_frame_header_t* misc_frame, uint8_t* bytes,
+int picoquic_prepare_misc_frame(picoquic_packet_t* packet, picoquic_misc_frame_header_t* misc_frame, uint8_t* bytes,
     size_t bytes_max, size_t* consumed);
 
 /* send/receive */

@@ -1435,7 +1435,7 @@ int picoquic_prepare_packet_0rtt(picoquic_cnx_t* cnx, picoquic_path_t * path_x, 
     } else {
         /* If present, send misc frame */
         while (cnx->first_misc_frame != NULL) {
-            ret = picoquic_prepare_first_misc_frame(cnx, &bytes[length],
+            ret = picoquic_prepare_first_misc_frame(cnx, packet, &bytes[length],
                 send_buffer_max - checksum_overhead - length, &data_bytes);
 
             if (ret == 0) {
@@ -1799,7 +1799,7 @@ int picoquic_prepare_packet_client_init(picoquic_cnx_t* cnx, picoquic_path_t * p
 
                     /* encode path challenge response if required */
                     if (path_x->response_required) {
-                        ret = picoquic_prepare_path_response_frame(&bytes[length],
+                        ret = picoquic_prepare_path_response_frame(packet, &bytes[length],
                             send_buffer_max - checksum_overhead - length, &data_bytes, path_x->challenge_response);
                         if (ret == 0) {
                             length += data_bytes;
@@ -1813,7 +1813,7 @@ int picoquic_prepare_packet_client_init(picoquic_cnx_t* cnx, picoquic_path_t * p
 
                     /* If present, send misc frame */
                     while (cnx->first_misc_frame != NULL) {
-                        ret = picoquic_prepare_first_misc_frame(cnx, &bytes[length],
+                        ret = picoquic_prepare_first_misc_frame(cnx, packet, &bytes[length],
                             send_buffer_max - checksum_overhead - length, &data_bytes);
                         if (ret == 0) {
                             length += data_bytes;
@@ -1972,7 +1972,7 @@ int picoquic_prepare_packet_server_init(picoquic_cnx_t* cnx, picoquic_path_t * p
             if (path_x->challenge_time + path_x->retransmit_timer <= current_time || path_x->challenge_time == 0) {
                 if (path_x->challenge_repeat_count < PICOQUIC_CHALLENGE_REPEAT_MAX) {
                     /* When blocked, repeat the path challenge or wait */
-                    if (picoquic_prepare_path_challenge_frame(&bytes[length],
+                    if (picoquic_prepare_path_challenge_frame(packet, &bytes[length],
                         send_buffer_max - checksum_overhead - length, &data_bytes,
                         path_x->challenge[path_x->challenge_repeat_count]) == 0) {
                         length += data_bytes;
@@ -2022,7 +2022,7 @@ int picoquic_prepare_packet_server_init(picoquic_cnx_t* cnx, picoquic_path_t * p
 
             /* encode path challenge response if required */
             if (path_x->response_required) {
-                if (picoquic_prepare_path_response_frame(&bytes[length],
+                if (picoquic_prepare_path_response_frame(packet, &bytes[length],
                     send_buffer_max - checksum_overhead - length, &data_bytes, path_x->challenge_response) == 0) {
                     length += data_bytes;
                     path_x->response_required = 0;
@@ -2482,7 +2482,7 @@ int picoquic_prepare_packet_ready(picoquic_cnx_t* cnx, picoquic_path_t * path_x,
                 if (path_x->challenge_time + path_x->retransmit_timer <= current_time || path_x->challenge_repeat_count == 0) {
                     if (path_x->challenge_repeat_count < PICOQUIC_CHALLENGE_REPEAT_MAX) {
                         /* When blocked, repeat the path challenge or wait */
-                        if (picoquic_prepare_path_challenge_frame(&bytes[length],
+                        if (picoquic_prepare_path_challenge_frame(packet, &bytes[length],
                             send_buffer_max - checksum_overhead - length, &data_bytes,
                             path_x->challenge[path_x->challenge_repeat_count]) == 0) {
                             length += data_bytes;
@@ -2525,7 +2525,7 @@ int picoquic_prepare_packet_ready(picoquic_cnx_t* cnx, picoquic_path_t * path_x,
             }
 
             if (path_x->response_required) {
-                if (picoquic_prepare_path_response_frame(&bytes[length],
+                if (picoquic_prepare_path_response_frame(packet, &bytes[length],
                     send_buffer_max - checksum_overhead - length, &data_bytes, path_x->challenge_response) == 0) {
                     length += data_bytes;
                     path_x->response_required = 0;
@@ -2585,7 +2585,7 @@ int picoquic_prepare_packet_ready(picoquic_cnx_t* cnx, picoquic_path_t * path_x,
                     if (length > header_length || pmtu_discovery_needed != picoquic_pmtu_discovery_required) {
                         /* If present, send misc frame */
                         while (cnx->first_misc_frame != NULL) {
-                            ret = picoquic_prepare_first_misc_frame(cnx, &bytes[length],
+                            ret = picoquic_prepare_first_misc_frame(cnx, packet, &bytes[length],
                                 send_buffer_min_max - checksum_overhead - length, &data_bytes);
                             if (ret == 0) {
                                 length += data_bytes;
@@ -2954,7 +2954,7 @@ int picoquic_prepare_probe(picoquic_cnx_t* cnx,
 
                 if (ret == 0) {
                     /* Format the challenge frame */
-                    ret = picoquic_prepare_path_challenge_frame(&bytes[length],
+                    ret = picoquic_prepare_path_challenge_frame(packet, &bytes[length],
                         send_buffer_max - checksum_overhead - length, &data_bytes,
                         probe->challenge[probe->challenge_repeat_count]);
                     if (ret == 0) {
@@ -3053,7 +3053,7 @@ static int picoquic_prepare_alt_challenge(picoquic_cnx_t* cnx,
                     if (cnx->path[i]->alt_challenge_required &&
                         (cnx->path[i]->alt_challenge_repeat_count == 0 ||
                             current_time >= cnx->path[i]->alt_challenge_timeout)) {
-                        ret = picoquic_prepare_path_challenge_frame(&bytes[length],
+                        ret = picoquic_prepare_path_challenge_frame(packet, &bytes[length],
                             send_buffer_max - checksum_overhead - length, &data_bytes,
                             cnx->path[i]->alt_challenge[cnx->path[i]->alt_challenge_repeat_count]);
                         if (ret == 0) {
@@ -3064,7 +3064,7 @@ static int picoquic_prepare_alt_challenge(picoquic_cnx_t* cnx,
                     }
 
                     if (cnx->path[i]->alt_response_required) {
-                        ret = picoquic_prepare_path_response_frame(&bytes[length],
+                        ret = picoquic_prepare_path_response_frame(packet, &bytes[length],
                             send_buffer_max - checksum_overhead - length, &data_bytes, cnx->path[i]->alt_challenge_response);
                         if (ret == 0) {
                             length += data_bytes;
