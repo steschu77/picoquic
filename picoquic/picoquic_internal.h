@@ -116,8 +116,8 @@ typedef struct st_picoquic_frame_t
     uint64_t stream_id;
 } picoquic_frame_t;
 
-picoquic_frame_t* append_frame(picoquic_frame_t* prev, picoquic_frame_type_enum_t ftype, size_t length, uint64_t stream_id);
-void delete_frames(picoquic_frame_t* first);
+void append_frame(picoquic_packet_t* packet, picoquic_frame_type_enum_t ftype, size_t length, uint64_t stream_id);
+void delete_frames(picoquic_packet_t* packet);
 
 
 typedef struct st_picoquic_packet_header_t {
@@ -1142,7 +1142,7 @@ int picoquic_prepare_path_response_frame(picoquic_packet_t* packet, uint8_t* byt
     size_t bytes_max, size_t* consumed, uint64_t challenge);
 int picoquic_prepare_new_connection_id_frame(picoquic_cnx_t * cnx, picoquic_path_t * path_x,
     uint8_t* bytes, size_t bytes_max, size_t* consumed);
-int picoquic_prepare_blocked_frames(picoquic_cnx_t* cnx, uint8_t* bytes, size_t bytes_max, size_t* consumed);
+int picoquic_prepare_blocked_frames(picoquic_cnx_t* cnx, picoquic_packet_t* packet, uint8_t* bytes, size_t bytes_max, size_t* consumed);
 int picoquic_queue_retire_connection_id_frame(picoquic_cnx_t * cnx, uint64_t sequence);
 int picoquic_queue_new_token_frame(picoquic_cnx_t * cnx, uint8_t * token, size_t token_length);
 
@@ -1153,7 +1153,7 @@ int picoquic_prepare_misc_frame(picoquic_packet_t* packet, picoquic_misc_frame_h
 
 /* send/receive */
 
-int picoquic_decode_frames(picoquic_cnx_t* cnx, picoquic_path_t * path_x, uint8_t* bytes, size_t bytes_max,
+int picoquic_decode_frames(picoquic_cnx_t* cnx, picoquic_path_t * path_x, picoquic_packet_header* pck, uint8_t* bytes, size_t bytes_max,
     int epoch, struct sockaddr* addr_from, struct sockaddr* addr_to, uint64_t current_time);
 
 int picoquic_skip_frame(picoquic_cnx_t* cnx, uint8_t* bytes, size_t bytes_max, size_t* consumed, int* pure_ack);

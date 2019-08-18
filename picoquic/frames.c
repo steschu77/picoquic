@@ -60,28 +60,35 @@ typedef uint8_t* (*skip_frame_fn)(uint8_t* bytes, const uint8_t* bytes_max);
  * Helper utilities
  * ****************************************************/
 
-picoquic_frame_t * append_frame(picoquic_frame_t * prev, picoquic_frame_type_enum_t ftype, size_t length, uint64_t stream_id)
+void append_frame(picoquic_packet_t* packet, picoquic_frame_type_enum_t ftype, size_t length, uint64_t stream_id)
 {
     picoquic_frame_t * frame = (picoquic_frame_t*)malloc(sizeof(picoquic_frame_t));
     if (frame != NULL) {
-        if (prev != NULL) {
-            prev->next = frame;
-        }
         frame->ftype = ftype;
         frame->length = length;
         frame->stream_id = stream_id;
         frame->next = NULL;
+
+        if (packet->last_frame != NULL) {
+            packet->last_frame->next = frame;
+        }
+        packet->last_frame = frame;
+
+        if (packet->first_frame == NULL) {
+            packet->first_frame = packet->last_frame;
+        }
     }
-    return frame;
 }
 
-void delete_frames(picoquic_frame_t* first)
+void delete_frames(picoquic_packet_t* packet)
 {
-    for (picoquic_frame_t* frame = first; frame != NULL; ) {
+    for (picoquic_frame_t* frame = packet->first_frame; frame != NULL; ) {
         picoquic_frame_t* tmp = frame;
         frame = frame->next;
         free(tmp);
     }
+    packet->first_frame = NULL;
+    packet->last_frame = NULL;
 }
 
 /* Skip and decode function.
@@ -1192,7 +1199,7 @@ picoquic_stream_head_t* picoquic_find_ready_stream(picoquic_cnx_t* cnx)
 /* Management of BLOCKED signals
  */
 
-int picoquic_prepare_data_blocked_frame(uint8_t* bytes,
+int picoquic_prepare_data_blocked_frame(picoquic_packet_t* packet, uint8_t* bytes,
     size_t bytes_max, size_t* consumed, uint64_t data_limit)
 {
     int ret = 0;
@@ -1213,13 +1220,14 @@ int picoquic_prepare_data_blocked_frame(uint8_t* bytes,
         }
         else {
             *consumed = 1 + ll;
+            append_frame(packet, picoquic_frame_type_data_blocked, *consumed, data_limit);
         }
     }
 
     return ret;
 }
 
-int picoquic_prepare_stream_data_blocked_frame(uint8_t* bytes,
+int picoquic_prepare_stream_data_blocked_frame(picoquic_packet_t* packet, uint8_t* bytes,
     size_t bytes_max, size_t* consumed, uint64_t stream_id, uint64_t data_limit)
 {
     int ret = 0;
@@ -1245,13 +1253,14 @@ int picoquic_prepare_stream_data_blocked_frame(uint8_t* bytes,
         }
         else {
             *consumed = 1 + ll1 + ll2;
+            append_frame(packet, picoquic_frame_type_stream_data_blocked, *consumed, stream_id);
         }
     }
 
     return ret;
 }
 
-int picoquic_prepare_stream_blocked_frame(uint8_t* bytes,
+int picoquic_prepare_stream_blocked_frame(picoquic_packet_t* packet, uint8_t* bytes,
     size_t bytes_max, size_t* consumed, picoquic_cnx_t * cnx, uint64_t stream_id)
 {
     int ret = 0;
@@ -1289,13 +1298,14 @@ int picoquic_prepare_stream_blocked_frame(uint8_t* bytes,
             }
             else {
                 *consumed = 1 + ll;
+                append_frame(packet, f_type, *consumed, stream_id);
             }
         }
     }
     return ret;
 }
 
-static int picoquic_prepare_one_blocked_frame(picoquic_cnx_t* cnx, uint8_t* bytes, size_t bytes_max, picoquic_stream_head_t * stream, size_t* data_bytes)
+static int picoquic_prepare_one_blocked_frame(picoquic_cnx_t* cnx, picoquic_packet_t* packet, uint8_t* bytes, size_t bytes_max, picoquic_stream_head_t * stream, size_t* data_bytes)
 {
     int ret = 0;
 
@@ -1307,7 +1317,7 @@ static int picoquic_prepare_one_blocked_frame(picoquic_cnx_t* cnx, uint8_t* byte
         if (IS_CLIENT_STREAM_ID(stream->stream_id) != cnx->client_mode ||
             stream->stream_id > ((IS_BIDIR_STREAM_ID(stream->stream_id)) ? cnx->max_stream_id_bidir_remote : cnx->max_stream_id_unidir_remote)) {
             /* Prepare a stream blocked frame */
-            ret = picoquic_prepare_stream_blocked_frame(bytes, bytes_max, data_bytes, cnx, stream->stream_id);
+            ret = picoquic_prepare_stream_blocked_frame(packet, bytes, bytes_max, data_bytes, cnx, stream->stream_id);
             if (ret == 0) {
                 if (IS_BIDIR_STREAM_ID(stream->stream_id)) {
                     cnx->stream_blocked_bidir_sent = 1;
@@ -1320,7 +1330,7 @@ static int picoquic_prepare_one_blocked_frame(picoquic_cnx_t* cnx, uint8_t* byte
         else {
             if (cnx->maxdata_remote <= cnx->data_sent && !cnx->sent_blocked_frame) {
                 /* Prepare a blocked frame */
-                ret = picoquic_prepare_data_blocked_frame(bytes, bytes_max, data_bytes, cnx->maxdata_remote);
+                ret = picoquic_prepare_data_blocked_frame(packet, bytes, bytes_max, data_bytes, cnx->maxdata_remote);
                 if (ret == 0) {
                     cnx->sent_blocked_frame = 1;
                 }
@@ -1328,7 +1338,7 @@ static int picoquic_prepare_one_blocked_frame(picoquic_cnx_t* cnx, uint8_t* byte
 
             if (stream->sent_offset >= stream->maxdata_remote && !stream->stream_data_blocked_sent) {
                 /* Prepare a stream data blocked frame */
-                ret = picoquic_prepare_stream_data_blocked_frame(bytes, bytes_max, data_bytes, stream->stream_id, stream->maxdata_remote);
+                ret = picoquic_prepare_stream_data_blocked_frame(packet, bytes, bytes_max, data_bytes, stream->stream_id, stream->maxdata_remote);
                 if (ret == 0) {
                     stream->stream_data_blocked_sent = 1;
                 }
@@ -1339,7 +1349,7 @@ static int picoquic_prepare_one_blocked_frame(picoquic_cnx_t* cnx, uint8_t* byte
     return ret;
 }
 
-int picoquic_prepare_blocked_frames(picoquic_cnx_t* cnx, uint8_t* bytes, size_t bytes_max, size_t* consumed)
+int picoquic_prepare_blocked_frames(picoquic_cnx_t* cnx, picoquic_packet_t* packet, uint8_t* bytes, size_t bytes_max, size_t* consumed)
 {
     int ret = 0;
     picoquic_stream_head_t* stream = picoquic_first_stream(cnx);
@@ -1358,7 +1368,7 @@ int picoquic_prepare_blocked_frames(picoquic_cnx_t* cnx, uint8_t* bytes, size_t 
         if (hi_pri_stream == NULL || stream == hi_pri_stream){
             size_t data_bytes = 0;
 
-            ret = picoquic_prepare_one_blocked_frame(cnx, bytes + byte_index, bytes_max - byte_index, stream, &data_bytes);
+            ret = picoquic_prepare_one_blocked_frame(cnx, packet, bytes + byte_index, bytes_max - byte_index, stream, &data_bytes);
             if (ret == 0) {
                 byte_index += data_bytes;
             }
@@ -1631,11 +1641,6 @@ int picoquic_prepare_stream_frame(picoquic_cnx_t* cnx, picoquic_packet_t* packet
                 /* mark the stream as unblocked since we sent something */
                 stream->stream_data_blocked_sent = 0;
                 cnx->sent_blocked_frame = 0;
-
-                packet->last_frame = append_frame(packet->last_frame, picoquic_frame_type_stream_range_min, length, stream->stream_id);
-                if (packet->first_frame == NULL) {
-                    packet->first_frame = packet->last_frame;
-                }
             }
         }
     }
@@ -3247,10 +3252,7 @@ int picoquic_prepare_misc_frame(picoquic_packet_t* packet, picoquic_misc_frame_h
         memcpy(bytes, frame, misc_frame->length);
         *consumed = misc_frame->length;
 
-        packet->last_frame = append_frame(packet->last_frame, bytes[0], misc_frame->length, 0);
-        if (packet->first_frame == NULL) {
-            packet->first_frame = packet->last_frame;
-        }
+        append_frame(packet, bytes[0], misc_frame->length, 0);
     }
 
     return ret;
@@ -3271,12 +3273,6 @@ int picoquic_prepare_path_challenge_frame(picoquic_packet_t* packet, uint8_t* by
         bytes[0] = picoquic_frame_type_path_challenge;
         picoformat_64(bytes + 1, challenge);
         *consumed = 1 + 8;
-
-        packet->last_frame = append_frame(packet->last_frame, picoquic_frame_type_path_challenge, 1 + 8, 0);
-        if (packet->first_frame == NULL) {
-            packet->first_frame = packet->last_frame;
-        }
-
     }
 
     return ret;
@@ -3329,11 +3325,6 @@ int picoquic_prepare_path_response_frame(picoquic_packet_t* packet, uint8_t* byt
         bytes[0] = picoquic_frame_type_path_response;
         picoformat_64(bytes + 1, challenge);
         *consumed = 1 + 8;
-
-        packet->last_frame = append_frame(packet->last_frame, picoquic_frame_type_path_response, 1 + 8, 0);
-        if (packet->first_frame == NULL) {
-            packet->first_frame = packet->last_frame;
-        }
     }
 
     return ret;
@@ -3605,8 +3596,8 @@ int picoquic_queue_datagram_frame(picoquic_cnx_t * cnx, uint64_t id,
  * In some cases, the expected frames are "restricted" to only ACK, STREAM 0 and PADDING.
  */
 
-int picoquic_decode_frames(picoquic_cnx_t* cnx, picoquic_path_t * path_x, uint8_t* bytes,
-    size_t bytes_maxsize, int epoch,
+int picoquic_decode_frames(picoquic_cnx_t* cnx, picoquic_path_t * path_x, picoquic_packet_header* pck,
+    uint8_t* bytes, size_t bytes_maxsize, int epoch,
     struct sockaddr* addr_from,
     struct sockaddr* addr_to, uint64_t current_time)
 {

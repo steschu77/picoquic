@@ -1088,7 +1088,7 @@ int picoquic_incoming_initial(
         }
         /* decode the incoming frames */
         if (ret == 0) {
-            ret = picoquic_decode_frames(*pcnx, (*pcnx)->path[0],
+            ret = picoquic_decode_frames(*pcnx, (*pcnx)->path[0], ph,
                 bytes + ph->offset, ph->payload_length, ph->epoch, addr_from, addr_to, current_time);
         }
 
@@ -1097,6 +1097,11 @@ int picoquic_incoming_initial(
             /* initialization of context & creation of data */
             /* TODO: find path to send data produced by TLS. */
             ret = picoquic_tls_stream_process(*pcnx);
+        }
+
+        if (ret == 0 && (*pcnx)->cc_log != NULL) {
+            picoquic_cc_dump(*pcnx, current_time);
+            picoquic_packetheader_dump(*pcnx, current_time, ph, 1);
         }
     }
 
@@ -1267,7 +1272,7 @@ int picoquic_incoming_server_cleartext(
                 ret = picoquic_connection_error(cnx, PICOQUIC_TRANSPORT_PROTOCOL_VIOLATION, 0);
             }
             else {
-                ret = picoquic_decode_frames(cnx, cnx->path[0],
+                ret = picoquic_decode_frames(cnx, cnx->path[0], ph,
                     bytes + ph->offset, ph->payload_length, ph->epoch, NULL, addr_to, current_time);
             }
 
@@ -1283,6 +1288,11 @@ int picoquic_incoming_server_cleartext(
                 {
                     picoquic_implicit_handshake_ack(cnx, picoquic_packet_context_initial, current_time);
                 }
+            }
+
+            if (ret == 0 && cnx->cc_log != NULL) {
+                picoquic_cc_dump(cnx, current_time);
+                picoquic_packetheader_dump(cnx, current_time, ph, 1);
             }
 
             if (ret != 0) {
@@ -1326,7 +1336,7 @@ int picoquic_incoming_client_handshake(
                 ret = picoquic_connection_error(cnx, PICOQUIC_TRANSPORT_PROTOCOL_VIOLATION, 0);
             }
             else {
-                ret = picoquic_decode_frames(cnx, cnx->path[0],
+                ret = picoquic_decode_frames(cnx, cnx->path[0], ph,
                     bytes + ph->offset, ph->payload_length, ph->epoch, NULL, NULL, current_time);
             }
             /* processing of client clear text packet */
@@ -1334,6 +1344,11 @@ int picoquic_incoming_client_handshake(
                 /* initialization of context & creation of data */
                 /* TODO: find path to send data produced by TLS. */
                 ret = picoquic_tls_stream_process(cnx);
+            }
+
+            if (ret == 0 && cnx->cc_log != NULL) {
+                picoquic_cc_dump(cnx, current_time);
+                picoquic_packetheader_dump(cnx, current_time, ph, 1);
             }
 
             if (ret != 0) {
@@ -1393,7 +1408,7 @@ int picoquic_incoming_0rtt(
                 ret = picoquic_connection_error(cnx, PICOQUIC_TRANSPORT_PROTOCOL_VIOLATION, 0);
             }
             else {
-                ret = picoquic_decode_frames(cnx, cnx->path[0],
+                ret = picoquic_decode_frames(cnx, cnx->path[0], ph,
                     bytes + ph->offset, ph->payload_length, ph->epoch, NULL, NULL, current_time);
             }
 
@@ -1402,6 +1417,12 @@ int picoquic_incoming_0rtt(
                 ret = picoquic_tls_stream_process(cnx);
             }
         }
+
+        if (ret == 0 && cnx->cc_log != NULL) {
+            picoquic_cc_dump(cnx, current_time);
+            picoquic_packetheader_dump(cnx, current_time, ph, 1);
+        }
+
     } else {
         /* Not expected. Log and ignore. */
         ret = PICOQUIC_ERROR_UNEXPECTED_PACKET;
@@ -1727,7 +1748,7 @@ int picoquic_incoming_encrypted(
                 cnx->is_1rtt_received = 1;
                 picoquic_spin_function_table[cnx->spin_policy].spinbit_incoming(cnx, path_x, ph);
                 /* Accept the incoming frames */
-                ret = picoquic_decode_frames(cnx, cnx->path[path_id], 
+                ret = picoquic_decode_frames(cnx, cnx->path[path_id], ph,
                     bytes + ph->offset, ph->payload_length, ph->epoch, addr_from, addr_to, current_time);
             }
 

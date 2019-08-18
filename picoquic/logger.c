@@ -1891,6 +1891,10 @@ void picoquic_packet_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_p
             frame->ftype <= picoquic_frame_type_stream_range_max) {
             bytewrite_vint(ps_msg, frame->stream_id);
         }
+        if (frame->ftype == picoquic_frame_type_new_connection_id ||
+            frame->ftype == picoquic_frame_type_crypto_hs) {
+            bytewrite_vint(ps_msg, frame->stream_id);
+        }
     }
 
     bytestream_buf stream_head;
@@ -1911,7 +1915,7 @@ void picoquic_packetheader_dump(picoquic_cnx_t* cnx, uint64_t current_time, pico
     bytestream_buf stream_msg;
     bytestream * ps_msg = bytewriter_init(&stream_msg);
     bytewrite_vint(ps_msg, current_time - cnx->start_time);
-    bytewrite_vint(ps_msg, 77);
+    bytewrite_vint(ps_msg, pck->pn64);
     bytewrite_vint(ps_msg, pck->payload_length);
     bytewrite_vint(ps_msg, pck->ptype);
 
