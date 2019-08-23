@@ -2793,19 +2793,19 @@ int picoquic_prepare_packet_ready(picoquic_cnx_t* cnx, picoquic_path_t * path_x,
         }
     }
     
-    picoquic_finalize_and_protect_packet(cnx, packet,
-        ret, length, header_length, checksum_overhead,
-        send_length, send_buffer, send_buffer_min_max,
-        &path_x->remote_cnxid, &path_x->local_cnxid, path_x, current_time);
-
     if (*send_length > 0) {
         *next_wake_time = current_time;
 
         if (ret == 0 && cnx->cc_log != NULL) {
             picoquic_cc_dump(cnx, current_time);
-            picoquic_packet_dump(cnx, current_time, packet, 0);
+            picoquic_packet_dump(cnx, current_time, packet, send_buffer, send_length, 0);
         }
     }
+
+    picoquic_finalize_and_protect_packet(cnx, packet,
+        ret, length, header_length, checksum_overhead,
+        send_length, send_buffer, send_buffer_min_max,
+        &path_x->remote_cnxid, &path_x->local_cnxid, path_x, current_time);
 
     return ret;
 }

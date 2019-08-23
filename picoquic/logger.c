@@ -1865,11 +1865,13 @@ void picoquic_close_cc_dump(picoquic_cnx_t * cnx)
     cnx->cc_log = picoquic_file_close(cnx->cc_log);
 }
 
-void picoquic_packet_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_packet_t* pck, int rxtx)
+void picoquic_packet_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_packet_t* pck, const uint8_t* buffer, size_t length, int rxtx)
 {
     if (cnx->cc_log == NULL) {
         return;
     }
+
+    const uint8_t* bytes = buffer;
 
     bytestream_buf stream_msg;
     bytestream * ps_msg = bytewriter_init(&stream_msg);
@@ -1882,19 +1884,20 @@ void picoquic_packet_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_p
     for (picoquic_frame_t* frame = pck->first_frame; frame != NULL; frame = frame->next) {
         nb_frames++;
     }
-
     bytewrite_vint(ps_msg, nb_frames);
+
     for (picoquic_frame_t* frame = pck->first_frame; frame != NULL; frame = frame->next) {
-        bytewrite_vint(ps_msg, frame->ftype);
+        bytewrite_vint(ps_msg, bytes[0]);
         bytewrite_vint(ps_msg, frame->length);
-        if (frame->ftype >= picoquic_frame_type_stream_range_min &&
-            frame->ftype <= picoquic_frame_type_stream_range_max) {
+        if (frame->ftype == picoquic_frame_type_crypto_hs ||
+            (frame->ftype >= picoquic_frame_type_stream_range_min &&
+             frame->ftype <= picoquic_frame_type_stream_range_max)) {
             bytewrite_vint(ps_msg, frame->stream_id);
         }
-        if (frame->ftype == picoquic_frame_type_new_connection_id ||
-            frame->ftype == picoquic_frame_type_crypto_hs) {
-            bytewrite_vint(ps_msg, frame->stream_id);
+        else {
+            bytewrite_buffer(ps_msg, bytes+1, frame->length);
         }
+        bytes += frame->length;
     }
 
     bytestream_buf stream_head;
