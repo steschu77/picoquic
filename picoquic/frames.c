@@ -1836,7 +1836,7 @@ int picoquic_parse_ack_header(uint8_t const* bytes, size_t bytes_max,
     uint8_t ack_delay_exponent)
 {
     bytestream stream;
-    bytestream * s = bytereader_init(&stream, bytes, bytes_max);
+    bytestream * s = bytestream_ref_init(&stream, bytes, bytes_max);
 
     int ret = 0;
     ret |= bytestream_skip(s, 1);
@@ -2554,7 +2554,7 @@ static uint8_t* picoquic_decode_ack_frame(picoquic_cnx_t* cnx, uint8_t* bytes,
     uint64_t nb_blocks;
 
     bytestream stream;
-    bytestream * s = bytereader_init(&stream, bytes, bytes_max - bytes);
+    bytestream * s = bytestream_ref_init(&stream, bytes, bytes_max - bytes);
 
     int ret = 0;
     ret |= byteread_int8(s, &ftype);
@@ -2632,7 +2632,7 @@ static uint8_t* picoquic_decode_ack_frame(picoquic_cnx_t* cnx, uint8_t* bytes,
 static uint8_t* picoquic_skip_ack_frame(uint8_t* bytes, const uint8_t* bytes_max)
 {
     bytestream stream;
-    bytestream* s = bytereader_init(&stream, bytes, bytes_max - bytes);
+    bytestream* s = bytestream_ref_init(&stream, bytes, bytes_max - bytes);
 
     int ret = 0;
 
