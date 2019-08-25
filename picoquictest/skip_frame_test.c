@@ -482,6 +482,7 @@ int parse_frame_test()
                 pc = picoquic_context_from_epoch(test_skip_list[i].epoch);
 
                 cnx->pkt_ctx[0].send_sequence = 0x0102030406;
+                cnx->path_sequence_next = 2;
 
                 /* create a path which can be retired with a connection_id_retire frame */
                 picoquic_create_path(cnx, cnx->start_time, (struct sockaddr*)&cnx->path[0]->local_addr, NULL);
