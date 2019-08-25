@@ -1874,7 +1874,7 @@ void picoquic_packet_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_p
     const uint8_t* bytes = buffer;
 
     bytestream_buf stream_msg;
-    bytestream * ps_msg = bytewriter_init(&stream_msg);
+    bytestream * ps_msg = bytestream_buf_init(&stream_msg, BYTESTREAM_MAX_BUFFER_SIZE);
     bytewrite_vint(ps_msg, current_time - cnx->start_time);
     bytewrite_vint(ps_msg, pck->sequence_number);
     bytewrite_vint(ps_msg, pck->length);
@@ -1901,7 +1901,7 @@ void picoquic_packet_dump(picoquic_cnx_t* cnx, uint64_t current_time, picoquic_p
     }
 
     bytestream_buf stream_head;
-    bytestream * ps_head = bytewriter_init(&stream_head);
+    bytestream * ps_head = bytestream_buf_init(&stream_head, BYTESTREAM_MAX_BUFFER_SIZE);
     bytewrite_int32(ps_head, picoquic_log_event_packet_sent + rxtx);
     bytewrite_int32(ps_head, (uint32_t)bytestream_length(ps_msg));
 
@@ -1916,7 +1916,7 @@ void picoquic_packetheader_dump(picoquic_cnx_t* cnx, uint64_t current_time, pico
     }
 
     bytestream_buf stream_msg;
-    bytestream * ps_msg = bytewriter_init(&stream_msg);
+    bytestream * ps_msg = bytestream_buf_init(&stream_msg, BYTESTREAM_MAX_BUFFER_SIZE);
     bytewrite_vint(ps_msg, current_time - cnx->start_time);
     bytewrite_vint(ps_msg, pck->pn64);
     bytewrite_vint(ps_msg, pck->payload_length);
@@ -1926,7 +1926,7 @@ void picoquic_packetheader_dump(picoquic_cnx_t* cnx, uint64_t current_time, pico
     bytewrite_vint(ps_msg, nb_frames);
 
     bytestream_buf stream_head;
-    bytestream * ps_head = bytewriter_init(&stream_head);
+    bytestream * ps_head = bytestream_buf_init(&stream_head, BYTESTREAM_MAX_BUFFER_SIZE);
     bytewrite_int32(ps_head, picoquic_log_event_packet_sent + rxtx);
     bytewrite_int32(ps_head, (uint32_t)bytestream_length(ps_msg));
 
