@@ -3431,35 +3431,28 @@ int picoquic_decode_datagram_frame(picoquic_cnx_t* cnx, uint8_t ftype, bytestrea
 int picoquic_prepare_datagram_frame(uint64_t id, size_t length, uint8_t * src, uint8_t * bytes, size_t bytes_max, size_t * consumed)
 {
     int ret = 0;
-    size_t byte_index = 0;
-    size_t l_id = 0;
-    size_t l_l = 0;
 
-    bytes[byte_index++] = (id == 0) ? picoquic_frame_type_datagram_l : picoquic_frame_type_datagram_id_l;
+    bytestream bs;
+    bytestream* s = bytestream_ref_init(&bs, bytes, bytes_max);
 
     if (id == 0) {
-        bytes[byte_index++] = picoquic_frame_type_datagram_l;
-    }
-    else {
-        bytes[byte_index++] = picoquic_frame_type_datagram_id_l;
-
-        l_id = picoquic_varint_encode(bytes + byte_index, bytes_max - byte_index, id);
-        byte_index += l_id;
+        ret |= bytewrite_int8(s, picoquic_frame_type_datagram_l);
+    } else {
+        ret |= bytewrite_int8(s, picoquic_frame_type_datagram_id_l);
+        ret |= bytewrite_vint(s, id);
     }
     
-    l_l = picoquic_varint_encode(bytes + byte_index, bytes_max - byte_index, length);
-    byte_index += l_l;
+    ret |= bytewrite_vint(s, length);
+    uint8_t* data_bytes = (uint8_t*)bytestream_ptr(s);
+    ret |= bytestream_skip(s, length);
 
-    if (l_l > 0 && l_id> 0 && byte_index + length <= bytes_max) {
-        memcpy(bytes + byte_index, src, length);
-        byte_index += length;
-    }
-    else {
+    if (ret == 0) {
+        memcpy(data_bytes, src, length);
+        *consumed = bytestream_length(s);
+    } else {
         ret = PICOQUIC_ERROR_FRAME_BUFFER_TOO_SMALL;
-        byte_index = 0;
+        *consumed = 0;
     }
-
-    *consumed = byte_index;
 
     return ret;
 }
