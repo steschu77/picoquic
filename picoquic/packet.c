@@ -830,9 +830,9 @@ int picoquic_prepare_version_negotiation(
         sp->cnxid_log64 = picoquic_val64_connection_id(ph->dest_cnx_id);
 
         if (quic->F_log != NULL) {
-            picoquic_log_outgoing_segment(quic->F_log, 1, NULL,
+            /*picoquic_log_outgoing_segment(quic->F_log, 1, NULL,
                 bytes, 0, sp->length,
-                bytes, sp->length);
+                bytes, sp->length);*/
         }
 
         picoquic_queue_stateless_packet(quic, sp);
@@ -961,9 +961,9 @@ void picoquic_queue_stateless_retry(picoquic_cnx_t* cnx,
         sp->cnxid_log64 = picoquic_val64_connection_id(picoquic_get_logging_cnxid(cnx));
 
         if (cnx->quic->F_log != NULL) {
-            picoquic_log_outgoing_segment(cnx->quic->F_log, 1, cnx,
+            /*picoquic_log_outgoing_segment(cnx->quic->F_log, 1, cnx,
                 bytes, 0, sp->length,
-                bytes, sp->length);
+                bytes, sp->length);*/
         }
 
         picoquic_queue_stateless_packet(cnx->quic, sp);
@@ -1792,8 +1792,9 @@ int picoquic_incoming_segment(
     }
 
     /* Log the incoming segment */
-    if (quic->F_log != NULL && (cnx == NULL || cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || quic->use_long_log)) {
-        picoquic_log_decrypted_segment(quic->F_log, 1, cnx, 1, &ph, bytes, *consumed, ret);
+    if (ret == 0 && (quic->use_long_log || cnx == NULL ||
+         cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE)) {
+        picoquic_log_decrypted_segment(quic->F_log, 1, cnx, 1, &ph, bytes, *consumed, current_time);
     }
 
     if (ret == 0) {

@@ -131,10 +131,10 @@ int read_log(FILE* bin_log, bytestream_msgs * msgs)
 {
     int ret = 0;
 
-    bytestream stream_head;
-    bytestream* ps_head = bytestream_alloc(&stream_head, 8);
+    bytestream_buf stream_head;
+    bytestream* ps_head = bytestream_buf_init(&stream_head, 8);
 
-    while (ret == 0 && fread(bytestream_data(ps_head), bytestream_size(ps_head), 1, bin_log) > 0) {
+    while (ret == 0 && fread(stream_head.buf, bytestream_size(ps_head), 1, bin_log) > 0) {
 
         uint32_t id = 0;
         ret |= byteread_int32(ps_head, &id);
@@ -153,7 +153,7 @@ int read_log(FILE* bin_log, bytestream_msgs * msgs)
                 ret = -1;
             }
 
-            if (ret == 0 && fread(bytestream_data(ps_msg), bytestream_size(ps_msg), 1, bin_log) <= 0) {
+            if (ret == 0 && fread(ps_msg->data, bytestream_size(ps_msg), 1, bin_log) <= 0) {
                 ret = -1;
             }
 
@@ -166,7 +166,6 @@ int read_log(FILE* bin_log, bytestream_msgs * msgs)
         }
     }
 
-    bytestream_delete(ps_head);
     return ret;
 }
 
@@ -321,15 +320,35 @@ int log_event(FILE * svg, bytestream_msg * msg)
         anchor = "end";
     }
 
-    uint64_t nb_frames = 0;
-    ret |= byteread_vint(s, &nb_frames);
-    for (uint64_t i = 0; i < nb_frames; ++i) {
-        uint64_t ftype, length, stream_id, epoch, path_seq;
-        ret |= byteread_vint(s, &ftype);
+    while (!bytestream_finished(s)) {
+
+        uint64_t length;
         ret |= byteread_vint(s, &length);
+
+        bytestream strm;
+        bytestream * frame = bytestream_ref_init(&strm, bytestream_ptr(s), length);
+
+        bytestream_skip(s, length);
+
+        uint64_t ftype, epoch, path_seq;
+        ret |= byteread_vint(frame, &ftype);
+
         if (ftype >= picoquic_frame_type_stream_range_min &&
             ftype <= picoquic_frame_type_stream_range_max) {
-            ret |= byteread_vint(s, &stream_id);
+
+            uint64_t stream_id;
+            ret |= byteread_vint(frame, &stream_id);
+
+            uint64_t offset = 0;
+            if ((ftype & 4) != 0) {
+                ret |= byteread_vint(frame, &offset);
+            }
+
+            uint64_t length = 0;
+            if ((ftype & 2) != 0) {
+                ret |= byteread_vint(frame, &length);
+            }
+
             fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"%s\" class=\"frm\">[%I64d: %I64d]</text>\n", x_pos, y_pos + 10, anchor, stream_id, length);
             x_pos += sgn(msg->rxtx, 40);
         }
@@ -343,13 +362,22 @@ int log_event(FILE * svg, bytestream_msg * msg)
             fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"%s\" class=\"arw\">[ack]</text>\n", x_pos, y_pos + 10, anchor);
             x_pos += sgn(msg->rxtx, 22);
             break;
+
         case picoquic_frame_type_crypto_hs:
-            ret |= byteread_vint(s, &epoch);
-            fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"%s\" class=\"chs\">[crypto-hs %I64d]</text>\n", x_pos, y_pos + 10, anchor, epoch);
-            x_pos += sgn(msg->rxtx, 55);
+            {
+                uint64_t offset = 0;
+                ret |= byteread_vint(frame, &offset);
+
+                uint64_t length = 0;
+                ret |= byteread_vint(frame, &length);
+
+                fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"%s\" class=\"chs\">[crypto-hs %I64d]</text>\n", x_pos, y_pos + 10, anchor, length);
+                x_pos += sgn(msg->rxtx, 55);
+            }
             break;
+
         case picoquic_frame_type_new_connection_id:
-            ret |= byteread_vint(s, &path_seq);
+            ret |= byteread_vint(frame, &path_seq);
             fprintf(svg, "  <text x=\"%d\" y=\"%d\" text-anchor=\"%s\" class=\"arw\">[cid %I64d]</text>\n", x_pos, y_pos + 10, anchor, path_seq);
             x_pos += sgn(msg->rxtx, 28);
             break;
@@ -370,9 +398,9 @@ int render_to_svg(FILE * svg, bytestream_msgs * msgs)
 
     for (bytestream_msg * msg = msgs->first; msg != NULL; msg = msg->next) {
         ret = log_event(svg, msg);
-        if (ret != 0) {
+        /*if (ret != 0) {
             break;
-        }
+        }*/
     }
 
     return ret;
