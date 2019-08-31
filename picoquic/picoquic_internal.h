@@ -992,7 +992,7 @@ void picoquic_log_packet_address(FILE* F, uint64_t log_cnxid64, picoquic_cnx_t* 
 
 void picoquic_log_prefix_initial_cid64(FILE* F, uint64_t log_cnxid64);
 
-void picoquic_log_transport_extension(FILE* F, picoquic_cnx_t* cnx, int log_cnxid);
+void picoquic_log_transport_extension(picoquic_cnx_t* cnx);
 void picoquic_log_picotls_ticket(FILE* F, picoquic_connection_id_t cnx_id,
     uint8_t* ticket, uint16_t ticket_length);
 

@@ -811,7 +811,7 @@ void picoquic_log_transport_extension_content(FILE* F, int log_cnxid, uint64_t c
 
 static void transport_param_log_test_one(FILE * F, uint8_t * bytes, size_t bytes_max, int client_mode)
 {
-    picoquic_log_transport_extension_content(F, 1, 0x0102030405060708ull, bytes, bytes_max);
+    //picoquic_log_transport_extension_content(F, 1, 0x0102030405060708ull, bytes, bytes_max);
     fprintf(F, "\n");
 }
 
