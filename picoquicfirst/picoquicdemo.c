@@ -159,6 +159,22 @@ static void picoquic_set_key_log_file_from_env(picoquic_quic_t* quic)
     picoquic_set_key_log_file(quic, F);
 }
 
+void picoquic_log_congestion_state(FILE* F, picoquic_cnx_t* cnx, uint64_t current_time)
+{
+    picoquic_path_t* path_x = cnx->path[0];
+
+    fprintf(F, "%" PRIx64 ": ", picoquic_val64_connection_id(picoquic_get_logging_cnxid(cnx)));
+    picoquic_log_time(F, cnx, current_time, "T= ", ", ");
+    fprintf(F, "cwin: %d,", (int)path_x->cwin);
+    fprintf(F, "flight: %d,", (int)path_x->bytes_in_transit);
+    fprintf(F, "nb_ret: %d,", (int)cnx->nb_retransmission_total);
+    fprintf(F, "rtt_min: %d,", (int)path_x->rtt_min);
+    fprintf(F, "rtt: %d,", (int)path_x->smoothed_rtt);
+    fprintf(F, "rtt_var: %d,", (int)path_x->rtt_variant);
+    fprintf(F, "max_ack_delay: %d,", (int)path_x->max_ack_delay);
+    fprintf(F, "state: %d\n", (int)cnx->cnx_state);
+}
+
 int quic_server(const char* server_name, int server_port,
     const char* pem_cert, const char* pem_key,
     int just_once, int do_hrr, picoquic_connection_id_cb_fn cnx_id_callback,
