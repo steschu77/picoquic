@@ -28,6 +28,50 @@
 #include "democlient.h"
 #include "demoserver.h"
 
+const char* picoquic_log_fin_or_event_name(picoquic_call_back_event_t ev)
+{
+    char const* text = "unknown";
+    switch (ev) {
+    case picoquic_callback_stream_data:
+        text = "stream data";
+        break;
+    case picoquic_callback_stream_fin:
+        text = "stream fin";
+        break;
+    case picoquic_callback_stream_reset:
+        text = "stream reset";
+        break;
+    case picoquic_callback_stop_sending:
+        text = "stop sending";
+        break;
+    case picoquic_callback_close:
+        text = "connection close";
+        break;
+    case picoquic_callback_application_close:
+        text = "application close";
+        break;
+    case picoquic_callback_version_negotiation:
+        text = "version negotiation";
+        break;
+    case picoquic_callback_stream_gap:
+        text = "stream gap";
+        break;
+    case picoquic_callback_prepare_to_send:
+        text = "ready to send";
+        break;
+    case picoquic_callback_almost_ready:
+        text = "almost ready";
+        break;
+    case picoquic_callback_ready:
+        text = "ready";
+        break;
+    default:
+        break;
+    }
+
+    return text;
+}
+
 /*
  * Create and delete server side connection context
  */
