@@ -159,6 +159,88 @@ static void picoquic_set_key_log_file_from_env(picoquic_quic_t* quic)
     picoquic_set_key_log_file(quic, F);
 }
 
+char const* picoquic_log_state_name(picoquic_state_enum state)
+{
+    char const* state_name = "unknown";
+
+    switch (state) {
+    case picoquic_state_client_init:
+        state_name = "client_init";
+        break;
+    case picoquic_state_client_init_sent:
+        state_name = "client_init_sent";
+        break;
+    case picoquic_state_client_renegotiate:
+        state_name = "client_renegotiate";
+        break;
+    case picoquic_state_client_retry_received:
+        state_name = "client_retry_received";
+        break;
+    case picoquic_state_client_init_resent:
+        state_name = "client_init_resent";
+        break;
+    case picoquic_state_server_init:
+        state_name = "server_init";
+        break;
+    case picoquic_state_server_handshake:
+        state_name = "server_handshake";
+        break;
+    case picoquic_state_client_handshake_start:
+        state_name = "client_handshake_start";
+        break;
+    case picoquic_state_client_handshake_progress:
+        state_name = "client_handshake_progress";
+        break;
+    case picoquic_state_client_almost_ready:
+        state_name = "client_almost_ready";
+        break;
+    case picoquic_state_handshake_failure:
+        state_name = "handshake_failure";
+        break;
+    case picoquic_state_handshake_failure_resend:
+        state_name = "handshake_failure_resend";
+        break;
+    case picoquic_state_server_almost_ready:
+        state_name = "server_almost_ready";
+        break;
+    case picoquic_state_server_false_start:
+        state_name = "server_false_start";
+        break;
+    case picoquic_state_client_ready_start:
+        state_name = "client_ready_start";
+        break;
+    case picoquic_state_ready:
+        state_name = "ready";
+        break;
+    case picoquic_state_disconnecting:
+        state_name = "disconnecting";
+        break;
+    case picoquic_state_closing_received:
+        state_name = "closing_received";
+        break;
+    case picoquic_state_closing:
+        state_name = "closing";
+        break;
+    case picoquic_state_draining:
+        state_name = "draining";
+        break;
+    case picoquic_state_disconnected:
+        state_name = "disconnected";
+        break;
+    default:
+        break;
+    }
+    return state_name;
+}
+
+void picoquic_log_processing(FILE* F, picoquic_cnx_t* cnx, size_t length, int ret)
+{
+    fprintf(F, "Processed %d bytes, state = %d (%s), return %d\n\n",
+        (int)length, cnx->cnx_state,
+        picoquic_log_state_name(cnx->cnx_state),
+        ret);
+}
+
 void picoquic_log_congestion_state(FILE* F, picoquic_cnx_t* cnx, uint64_t current_time)
 {
     picoquic_path_t* path_x = cnx->path[0];
