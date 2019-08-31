@@ -159,6 +159,9 @@ static void picoquic_set_key_log_file_from_env(picoquic_quic_t* quic)
     picoquic_set_key_log_file(quic, F);
 }
 
+void picoquic_log_time(FILE* F, picoquic_cnx_t* cnx, uint64_t current_time,
+    const char* label1, const char* label2);
+
 void picoquic_log_bytes(FILE* F, uint8_t* bytes, size_t bytes_max)
 {
     for (size_t i = 0; i < bytes_max;) {

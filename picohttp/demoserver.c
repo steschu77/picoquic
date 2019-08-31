@@ -28,6 +28,17 @@
 #include "democlient.h"
 #include "demoserver.h"
 
+void picoquic_log_time(FILE* F, picoquic_cnx_t* cnx, uint64_t current_time,
+    const char* label1, const char* label2)
+{
+    uint64_t delta_t = (cnx == NULL) ? current_time : current_time - cnx->start_time;
+    uint64_t time_sec = delta_t / 1000000;
+    uint32_t time_usec = (uint32_t)(delta_t % 1000000);
+
+    fprintf(F, "%s%llu.%06d%s", label1,
+        (unsigned long long)time_sec, time_usec, label2);
+}
+
 const char* picoquic_log_fin_or_event_name(picoquic_call_back_event_t ev)
 {
     char const* text = "unknown";
