@@ -159,6 +159,27 @@ static void picoquic_set_key_log_file_from_env(picoquic_quic_t* quic)
     picoquic_set_key_log_file(quic, F);
 }
 
+void picoquic_log_bytes(FILE* F, uint8_t* bytes, size_t bytes_max)
+{
+    for (size_t i = 0; i < bytes_max;) {
+        fprintf(F, "%04x:  ", (int)i);
+
+        for (int j = 0; j < 16 && i < bytes_max; j++, i++) {
+            fprintf(F, "%02x ", bytes[i]);
+        }
+        fprintf(F, "\n");
+    }
+}
+
+void picoquic_log_error_packet(FILE* F, uint8_t* bytes, size_t bytes_max, int ret)
+{
+    fprintf(F, "Packet length %d caused error: %d\n", (int)bytes_max, ret);
+
+    picoquic_log_bytes(F, bytes, bytes_max);
+
+    fprintf(F, "\n");
+}
+
 char const* picoquic_log_state_name(picoquic_state_enum state)
 {
     char const* state_name = "unknown";
