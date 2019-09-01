@@ -30,288 +30,34 @@
 #include "bytestream.h"
 #include "tls_api.h"
 
-void picoquic_log_prefix_initial_cid64(FILE* F, uint64_t log_cnxid64)
+int bytewrite_cid(bytestream* s, const picoquic_connection_id_t* cid)
 {
-    if (log_cnxid64 != 0) {
-        fprintf(F, "%016llx: ", (unsigned long long)log_cnxid64);
-    }
+    int ret = bytewrite_int8(s, cid->id_len);
+    ret |= bytewrite_buffer(s, cid->id, cid->id_len);
+    return ret;
 }
 
-void picoquic_log_packet_address(FILE* F, uint64_t log_cnxid64, picoquic_cnx_t* cnx,
-    struct sockaddr* addr_peer, int receiving, size_t length, uint64_t current_time)
+int bytewrite_cstr(bytestream* s, const char* cstr)
 {
-    uint64_t delta_t = 0;
-    uint64_t time_sec = 0;
-    uint32_t time_usec = 0;
+    size_t l_cstr = cstr != NULL ? strlen(cstr) : 0;
+    int ret = bytewrite_vint(s, l_cstr);
+    ret |= bytewrite_buffer(s, cstr, l_cstr);
+    return ret;
+}
 
-    picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-
-    fprintf(F, (receiving) ? "Receiving %d bytes from " : "Sending %d bytes to ",
-        (int)length);
-
-    if (addr_peer->sa_family == AF_INET) {
-        struct sockaddr_in* s4 = (struct sockaddr_in*)addr_peer;
-        uint8_t* addr = (uint8_t*)&s4->sin_addr;
-
-        fprintf(F, "%d.%d.%d.%d:%d",
-            addr[0], addr[1], addr[2], addr[3],
-            ntohs(s4->sin_port));
+int bytewrite_addr(bytestream* s, struct sockaddr* addr)
+{
+    int ret = bytewrite_vint(s, addr->sa_family);
+    if (addr->sa_family == AF_INET) {
+        struct sockaddr_in* s4 = (struct sockaddr_in*)addr;
+        ret |= bytewrite_buffer(s, &s4->sin_addr, 4);
+        ret |= bytewrite_int16(s, s4->sin_port);
     } else {
-        struct sockaddr_in6* s6 = (struct sockaddr_in6*)addr_peer;
-        uint8_t* addr = (uint8_t*)&s6->sin6_addr;
-
-        fprintf(F, "[");
-        for (int i = 0; i < 8; i++) {
-            if (i != 0) {
-                fprintf(F, ":");
-            }
-
-            if (addr[2 * i] != 0) {
-                fprintf(F, "%x%02x", addr[2 * i], addr[(2 * i) + 1]);
-            } else {
-                fprintf(F, "%x", addr[(2 * i) + 1]);
-            }
-        }
-        fprintf(F, "]:%d\n", ntohs(s6->sin6_port));
+        struct sockaddr_in6* s6 = (struct sockaddr_in6*)addr;
+        ret |= bytewrite_buffer(s, &s6->sin6_addr, 16);
+        ret |= bytewrite_int16(s, s6->sin6_port);
     }
-
-    if (cnx != NULL) {
-        delta_t = current_time - cnx->start_time;
-        time_sec = delta_t / 1000000;
-        time_usec = (uint32_t)(delta_t % 1000000);
-    }
-
-    fprintf(F, " at T=%llu.%06d (%llx)\n",
-        (unsigned long long)time_sec, time_usec,
-        (unsigned long long)current_time);
-}
-
-char const* picoquic_log_ptype_name(picoquic_packet_type_enum ptype)
-{
-    char const* ptype_name = "unknown";
-
-    switch (ptype) {
-    case picoquic_packet_error:
-        ptype_name = "error";
-        break;
-    case picoquic_packet_version_negotiation:
-        ptype_name = "version negotiation";
-        break;
-    case picoquic_packet_initial:
-        ptype_name = "initial";
-        break;
-    case picoquic_packet_retry:
-        ptype_name = "retry";
-        break;
-    case picoquic_packet_handshake:
-        ptype_name = "handshake";
-        break;
-    case picoquic_packet_0rtt_protected:
-        ptype_name = "0rtt protected";
-        break;
-    case picoquic_packet_1rtt_protected:
-        ptype_name = "1rtt protected";
-        break;
-    default:
-        break;
-    }
-
-    return ptype_name;
-}
-
-char const* picoquic_log_tp_name(uint64_t tp_number)
-{
-    char const * tp_name = "unknown";
-
-    switch (tp_number) {
-    case picoquic_tp_original_connection_id:
-        tp_name = "ocid";
-        break;
-    case picoquic_tp_idle_timeout:
-        tp_name = "ocid";
-        break;
-    case picoquic_tp_stateless_reset_token:
-        tp_name = "stateless_reset_token";
-        break;
-    case picoquic_tp_max_packet_size:
-        tp_name = "max_packet_size";
-        break;
-    case picoquic_tp_initial_max_data:
-        tp_name = "initial_max_data";
-        break;
-    case picoquic_tp_initial_max_stream_data_bidi_local:
-        tp_name = "max_stream_data_bidi_local";
-        break;
-    case picoquic_tp_initial_max_stream_data_bidi_remote:
-        tp_name = "max_stream_data_bidi_remote";
-        break;
-    case picoquic_tp_initial_max_stream_data_uni:
-        tp_name = "max_stream_data_uni";
-        break;
-    case picoquic_tp_initial_max_streams_bidi:
-        tp_name = "max_streams_bidi";
-        break;
-    case picoquic_tp_initial_max_streams_uni:
-        tp_name = "max_streams_uni";
-        break;
-    case picoquic_tp_ack_delay_exponent:
-        tp_name = "ack_delay_exponent";
-        break;
-    case picoquic_tp_max_ack_delay:
-        tp_name = "max_ack_delay";
-        break;
-    case picoquic_tp_disable_migration:
-        tp_name = "disable_migration";
-        break;
-    case picoquic_tp_server_preferred_address:
-        tp_name = "server_preferred_address";
-        break;
-    case picoquic_tp_active_connection_id_limit:
-        tp_name = "active_connection_id_limit";
-        break;
-    case picoquic_tp_max_datagram_size:
-        tp_name = "max_datagram_size";
-        break;
-    default:
-        break;
-    }
-
-    return tp_name;
-}
-
-void picoquic_log_connection_id(FILE* F, picoquic_connection_id_t * cid)
-{
-    fprintf(F, "<");
-    for (uint8_t i = 0; i < cid->id_len; i++) {
-        fprintf(F, "%02x", cid->id[i]);
-    }
-    fprintf(F, ">");
-}
-
-void picoquic_log_packet_header(FILE* F, uint64_t log_cnxid64, picoquic_packet_header* ph, int receiving)
-{
-    picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-
-    fprintf(F, "%s packet type: %d (%s), ", (receiving != 0)?"Receiving":"Sending",
-        ph->ptype, picoquic_log_ptype_name(ph->ptype));
-
-    fprintf(F, "S%d,", ph->spin);
-
-    switch (ph->ptype) {
-    case picoquic_packet_1rtt_protected:
-        /* Short packets. Log dest CID and Seq number. */
-        fprintf(F, "\n");
-        picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-        fprintf(F, "    ");
-        picoquic_log_connection_id(F, &ph->dest_cnx_id);
-        fprintf(F, ", Seq: %d (%llu), Phi: %d,\n", ph->pn, (unsigned long long)ph->pn64, ph->key_phase);
-        break;
-    case picoquic_packet_version_negotiation:
-        /* V nego. log both CID */
-        fprintf(F, "\n");
-        picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-        fprintf(F, "    ");
-        picoquic_log_connection_id(F, &ph->dest_cnx_id);
-        fprintf(F, ", ");
-        picoquic_log_connection_id(F, &ph->srce_cnx_id);
-        fprintf(F, "\n");
-        break;
-    default:
-        /* Long packets. Log Vnum, both CID, Seq num, Payload length */
-        fprintf(F, " Version %x,", ph->vn);
-
-        fprintf(F, "\n");
-        picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-        fprintf(F, "    ");
-        picoquic_log_connection_id(F, &ph->dest_cnx_id);
-        fprintf(F, ", ");
-        picoquic_log_connection_id(F, &ph->srce_cnx_id);
-        fprintf(F, ", Seq: %d, pl: %zd\n", ph->pn, ph->pl_val);
-        if (ph->ptype == picoquic_packet_initial) {
-            picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-            fprintf(F, "    Token length: %zd", ph->token_length);
-            if (ph->token_length > 0) {
-                size_t printed_length = (ph->token_length > 16) ? 16 : ph->token_length;
-                fprintf(F, ", Token: ");
-                for (size_t i = 0; i < printed_length; i++) {
-                    fprintf(F, "%02x", ph->token_bytes[i]);
-                }
-                if (printed_length < ph->token_length) {
-                    fprintf(F, "...");
-                }
-            }
-            fprintf(F, "\n");
-        }
-        break;
-    }
-}
-
-void picoquic_log_negotiation_packet(FILE* F, uint64_t log_cnxid64,
-    uint8_t* bytes, size_t length, picoquic_packet_header* ph)
-{
-    size_t byte_index = ph->offset;
-    uint32_t vn = 0;
-
-    picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-
-    fprintf(F, "    versions: ");
-
-    while (byte_index + 4 <= length) {
-        vn = PICOPARSE_32(bytes + byte_index);
-        byte_index += 4;
-        fprintf(F, "%x, ", vn);
-    }
-    fprintf(F, "\n");
-}
-
-void picoquic_log_retry_packet(FILE* F, picoquic_cnx_t* cnx, uint64_t log_cnxid64,
-    uint8_t* bytes, picoquic_packet_header* ph)
-{
-    size_t byte_index = ph->offset;
-    int token_length = 0;
-    uint8_t odcil;
-    uint8_t unused_cil;
-    int payload_length = (int)(ph->payload_length);
-    /* Decode ODCIL from bottom 4 bits of first byte */
-    if (cnx != NULL && picoquic_supported_versions[cnx->version_index].version ==
-        PICOQUIC_TWELFTH_INTEROP_VERSION) {
-        picoquic_parse_packet_header_cnxid_lengths(bytes[0], &unused_cil, &odcil);
-    }
-    else {
-        odcil = bytes[byte_index];
-        byte_index++;
-        payload_length--;
-    }
-
-    if ((int)odcil > payload_length) {
-        picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-        fprintf(F, "packet too short, ODCIL: %d, only %d bytes available.\n", 
-            odcil, payload_length);
-    } else {
-        /* Dump the old connection ID */
-        picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-        fprintf(F, "    ODCIL: <");
-        for (uint8_t i = 0; i < odcil; i++) {
-            fprintf(F, "%02x", bytes[byte_index++]);
-        }
-
-        token_length = payload_length - odcil;
-        fprintf(F, ">, Token length: %d\n", token_length);
-        /* Print the token or an error */
-        if (token_length > 0) {
-            int printed_length = (token_length > 16) ? 16 : token_length; 
-            picoquic_log_prefix_initial_cid64(F, log_cnxid64);
-            fprintf(F, "    Token: ");
-            for (uint8_t i = 0; i < printed_length; i++) {
-                fprintf(F, "%02x", bytes[byte_index++]);
-            }
-            if (printed_length < token_length) {
-                fprintf(F, "...");
-            }
-            fprintf(F, "\n");
-        }
-    }
-    fprintf(F, "\n");
+    return ret;
 }
 
 #define VARINT_LEN(bytes) ((size_t)1 << (((bytes)[0] & 0xC0) >> 6))
@@ -571,7 +317,6 @@ const uint8_t* picoquic_log_crypto_hs_frame(FILE* f, const uint8_t* bytes, const
     return bytes;
 }
 
-
 const uint8_t* picoquic_log_datagram_frame(FILE* f, const uint8_t* bytes, const uint8_t* bytes_max)
 {
     const uint8_t* bytes_begin = bytes;
@@ -608,11 +353,9 @@ const uint8_t* picoquic_log_padding(FILE* f, const uint8_t* bytes, const uint8_t
     return bytes;
 }
 
-
-void picoquic_log_frames(picoquic_cnx_t * cnx, const uint8_t* bytes, size_t length)
+void picoquic_log_frames(FILE * f, const uint8_t* bytes, size_t length)
 {
     const uint8_t* bytes_max = bytes + length;
-    FILE * f = cnx->cc_log;
 
     while (bytes != NULL && bytes < bytes_max) {
 
@@ -691,60 +434,86 @@ void picoquic_log_frames(picoquic_cnx_t * cnx, const uint8_t* bytes, size_t leng
     }
 }
 
-void picoquic_log_decrypted_segment(void* F_log, int log_cnxid, picoquic_cnx_t* cnx,
-    int receiving, picoquic_packet_header * ph, uint8_t* bytes, size_t length, uint64_t current_time)
+void picoquic_log_pdu(FILE* f, picoquic_connection_id_t* cid, int receiving, uint64_t current_time,
+    struct sockaddr* addr_peer, size_t packet_length)
 {
-    if (cnx == NULL || cnx->cc_log == NULL) {
-        return;
-    }
+    bytestream_buf stream_msg;
+    bytestream* msg = bytestream_buf_init(&stream_msg, BYTESTREAM_MAX_BUFFER_SIZE);
 
-    if (picoquic_supported_versions[cnx->version_index].version == PICOQUIC_TWELFTH_INTEROP_VERSION) {
-        return; /* for now, no support of writing logs for old versions */
-    }
+    bytewrite_cid(msg, cid);
+    bytewrite_vint(msg, current_time);
 
+    /* PDU information */
+    bytewrite_addr(msg, addr_peer);
+    bytewrite_vint(msg, packet_length);
 
     bytestream_buf stream_head;
     bytestream* head = bytestream_buf_init(&stream_head, 8);
+    bytewrite_int32(head, (uint32_t)bytestream_length(msg));
+    bytewrite_int32(head, picoquic_log_event_pdu_sent + receiving);
 
-    long fpos0 = ftell(cnx->cc_log);
-    (void)fwrite(bytestream_data(head), bytestream_size(head), 1, cnx->cc_log);
-
-    bytestream_buf stream_msg;
-    bytestream* msg = bytestream_buf_init(&stream_msg, 80);
-    bytewrite_vint(msg, current_time - cnx->start_time);
-    bytewrite_vint(msg, ph->pn64);
-    bytewrite_vint(msg, ph->payload_length);
-    bytewrite_vint(msg, ph->ptype);
-    (void)fwrite(bytestream_data(msg), bytestream_length(msg), 1, cnx->cc_log);
-
-    //uint64_t log_cnxid64 = picoquic_val64_connection_id(cnx->initial_cnxid);
-
-    /* Header */
-    //picoquic_log_packet_header(F, log_cnxid64, ph, receiving);
-
-    if (ph->ptype == picoquic_packet_version_negotiation) {
-        /* log version negotiation */
-        //picoquic_log_negotiation_packet(F, log_cnxid64, bytes, length, ph);
-    }
-    else if (ph->ptype == picoquic_packet_retry) {
-        /* log version negotiation */
-        //picoquic_log_retry_packet(F, cnx, log_cnxid64, bytes, ph);
-    }
-    else if (ph->ptype != picoquic_packet_error) {
-        picoquic_log_frames(cnx, bytes + ph->offset, ph->payload_length);
-    }
-
-    long fpos1 = ftell(cnx->cc_log);
-
-    bytewrite_int32(head, receiving ? picoquic_log_event_packet_recv : picoquic_log_event_packet_sent);
-    bytewrite_int32(head, (uint32_t)(fpos1 - fpos0 - 8));
-
-    (void)fseek(cnx->cc_log, fpos0, SEEK_SET);
-    (void)fwrite(bytestream_data(head), bytestream_size(head), 1, cnx->cc_log);
-    (void)fseek(cnx->cc_log, 0, SEEK_END);
+    (void)fwrite(bytestream_data(head), bytestream_length(head), 1, f);
+    (void)fwrite(bytestream_data(msg), bytestream_length(msg), 1, f);
 }
 
-void picoquic_log_outgoing_segment(void* F_log, int log_cnxid, picoquic_cnx_t* cnx,
+void picoquic_log_packet(FILE* f, picoquic_connection_id_t* cid, int receiving, uint64_t current_time,
+    picoquic_packet_header* ph, uint8_t* bytes, size_t bytes_max, int log_frames)
+{
+    bytestream_buf stream_head;
+    bytestream* head = bytestream_buf_init(&stream_head, 8);
+    bytewrite_int32(head, 0);
+    bytewrite_int32(head, picoquic_log_event_packet_sent + receiving);
+
+    long fpos0 = ftell(f);
+    (void)fwrite(bytestream_data(head), bytestream_length(head), 1, f);
+
+    bytestream_buf stream_msg;
+    bytestream* msg = bytestream_buf_init(&stream_msg, BYTESTREAM_MAX_BUFFER_SIZE);
+
+    bytewrite_cid(msg, cid);
+    bytewrite_vint(msg, current_time);
+
+    /* packet information */
+    bytewrite_int8(msg, (uint8_t)(2 * ph->spin + ph->key_phase));
+    bytewrite_vint(msg, ph->payload_length);
+    bytewrite_vint(msg, ph->ptype);
+    bytewrite_vint(msg, ph->pn64);
+
+    bytewrite_cid(msg, &ph->dest_cnx_id);
+    bytewrite_cid(msg, &ph->srce_cnx_id);
+
+    if (ph->ptype != picoquic_packet_1rtt_protected &&
+        ph->ptype != picoquic_packet_version_negotiation) {
+        bytewrite_int32(msg, ph->vn);
+    }
+
+    if (ph->ptype == picoquic_packet_initial) {
+        bytewrite_vint(msg, ph->token_length);
+        bytewrite_buffer(msg, ph->token_bytes, ph->token_length);
+    }
+
+    (void)fwrite(bytestream_data(msg), bytestream_length(msg), 1, f);
+
+    /* frame information */
+    if (ph->ptype == picoquic_packet_version_negotiation || ph->ptype == picoquic_packet_retry) {
+        picoquic_log_frame(f, bytes, bytes + bytes_max);
+    }
+    else if (ph->ptype != picoquic_packet_error && log_frames) {
+        picoquic_log_frames(f, bytes + ph->offset, ph->payload_length);
+    }
+
+    /* re-write chunk size field */
+    long fpos1 = ftell(f);
+
+    bytestream_reset(head);
+    bytewrite_int32(head, (uint32_t)(fpos1 - fpos0 - 8));
+
+    (void)fseek(f, fpos0, SEEK_SET);
+    (void)fwrite(bytestream_data(head), bytestream_length(head), 1, f);
+    (void)fseek(f, 0, SEEK_END);
+}
+
+void picoquic_log_outgoing_packet(FILE * f, picoquic_cnx_t* cnx,
     uint8_t * bytes,
     uint64_t sequence_number,
     size_t length,
@@ -756,9 +525,7 @@ void picoquic_log_outgoing_segment(void* F_log, int log_cnxid, picoquic_cnx_t* c
     struct sockaddr_in default_addr;
     int ret;
 
-    if (F_log == NULL) {
-        return;
-    }
+    picoquic_connection_id_t* cnxid = (cnx != NULL) ? &cnx->initial_cnxid : &picoquic_null_connection_id;
 
     memset(&default_addr, 0, sizeof(struct sockaddr_in));
     default_addr.sin_family = AF_INET;
@@ -783,24 +550,8 @@ void picoquic_log_outgoing_segment(void* F_log, int log_cnxid, picoquic_cnx_t* c
             ph.payload_length = 0;
         }
     }
-    /* log the segment. */
-    picoquic_log_decrypted_segment(F_log, log_cnxid, cnx, 0,
-        &ph, bytes, length, current_time);
-}
 
-int bytewrite_cid(bytestream* s, const picoquic_connection_id_t* cid)
-{
-    int ret = bytewrite_int8(s, cid->id_len);
-    ret |= bytewrite_buffer(s, cid->id, cid->id_len);
-    return ret;
-}
-
-int bytewrite_cstr(bytestream* s, const char * cstr)
-{
-    size_t l_cstr = cstr != NULL ? strlen(cstr) : 0;
-    int ret = bytewrite_vint(s, l_cstr);
-    ret |= bytewrite_buffer(s, cstr, l_cstr);
-    return ret;
+    picoquic_log_packet(f, cnxid, 0, current_time, &ph, bytes, length, 1);
 }
 
 void picoquic_log_transport_extension(picoquic_cnx_t* cnx)
@@ -825,8 +576,8 @@ void picoquic_log_transport_extension(picoquic_cnx_t* cnx)
 
     bytestream_buf stream_head;
     bytestream* head = bytestream_buf_init(&stream_head, 8);
-    bytewrite_int32(head, picoquic_log_event_param_update);
     bytewrite_int32(head, (uint32_t)bytestream_length(msg));
+    bytewrite_int32(head, picoquic_log_event_param_update);
 
     (void)fwrite(bytestream_data(head), bytestream_length(head), 1, cnx->cc_log);
     (void)fwrite(bytestream_data(msg), bytestream_length(msg), 1, cnx->cc_log);
@@ -843,8 +594,8 @@ void picoquic_log_picotls_ticket(FILE* f, picoquic_connection_id_t cnx_id,
 
     bytestream_buf stream_head;
     bytestream* head = bytestream_buf_init(&stream_head, 8);
-    bytewrite_int32(head, picoquic_log_event_tls_key_update);
     bytewrite_int32(head, (uint32_t)bytestream_length(msg));
+    bytewrite_int32(head, picoquic_log_event_tls_key_update);
 
     (void)fwrite(bytestream_data(head), bytestream_length(head), 1, f);
     (void)fwrite(bytestream_data(msg), bytestream_length(msg), 1, f);
@@ -953,8 +704,8 @@ void picoquic_cc_dump(picoquic_cnx_t * cnx, uint64_t current_time)
     bytestream_buf stream_head;
     bytestream * ps_head = bytestream_buf_init(&stream_head, BYTESTREAM_MAX_BUFFER_SIZE);
 
-    bytewrite_int32(ps_head, picoquic_log_event_cc_update);
     bytewrite_int32(ps_head, (uint32_t)bytestream_length(ps_msg));
+    bytewrite_int32(ps_head, picoquic_log_event_cc_update);
 
     (void)fwrite(bytestream_data(ps_head), bytestream_length(ps_head), 1, cnx->cc_log);
     (void)fwrite(bytestream_data(ps_msg), bytestream_length(ps_msg), 1, cnx->cc_log);
@@ -1047,8 +798,8 @@ int picoquic_cc_log_file_to_csv(char const * bin_cc_log_name, char const * csv_c
         while (ret == 0 && fread(stream.buf, bytestream_size(ps_head), 1, bin_log) > 0) {
 
             uint32_t id, len;
-            ret |= byteread_int32(ps_head, &id);
             ret |= byteread_int32(ps_head, &len);
+            ret |= byteread_int32(ps_head, &id);
 
             bytestream_reset(ps_head);
 

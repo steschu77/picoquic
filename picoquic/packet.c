@@ -827,10 +827,10 @@ int picoquic_prepare_version_negotiation(
         memcpy(&sp->addr_local, addr_to,
             (addr_to->sa_family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6));
         sp->if_index_local = if_index_to;
-        sp->cnxid_log64 = picoquic_val64_connection_id(ph->dest_cnx_id);
+        sp->cnxid = ph->dest_cnx_id;
 
         if (quic->F_log != NULL) {
-            /*picoquic_log_outgoing_segment(quic->F_log, 1, NULL,
+            /*picoquic_log_outgoing_packet(quic->F_log, 1, NULL,
                 bytes, 0, sp->length,
                 bytes, sp->length);*/
         }
@@ -891,13 +891,9 @@ void picoquic_process_unexpected_cnxid(
             memcpy(&sp->addr_local, addr_to,
                 (addr_to->sa_family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6));
             sp->if_index_local = if_index_to;
-            sp->cnxid_log64 = picoquic_val64_connection_id(ph->dest_cnx_id);
+            sp->cnxid = ph->dest_cnx_id;
 
-            if (quic->F_log != NULL) {
-                picoquic_log_prefix_initial_cid64(quic->F_log, sp->cnxid_log64);
-                fprintf(quic->F_log, "Unexpected connection ID, sending stateless reset.\n");
-            }
-
+            DBG_PRINTF("Unexpected connection ID %" PRIi64 ", sending stateless reset.\n", picoquic_val64_connection_id(sp->cnxid));
 
             picoquic_queue_stateless_packet(quic, sp);
         }
@@ -958,10 +954,10 @@ void picoquic_queue_stateless_retry(picoquic_cnx_t* cnx,
         memcpy(&sp->addr_local, addr_to,
             (addr_to->sa_family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6));
         sp->if_index_local = if_index_to;
-        sp->cnxid_log64 = picoquic_val64_connection_id(picoquic_get_logging_cnxid(cnx));
+        sp->cnxid = picoquic_get_logging_cnxid(cnx);
 
         if (cnx->quic->F_log != NULL) {
-            /*picoquic_log_outgoing_segment(cnx->quic->F_log, 1, cnx,
+            /*picoquic_log_outgoing_packet(cnx->quic->F_log, 1, cnx,
                 bytes, 0, sp->length,
                 bytes, sp->length);*/
         }
@@ -1767,11 +1763,14 @@ int picoquic_incoming_segment(
     int ret = 0;
     picoquic_cnx_t* cnx = NULL;
     picoquic_packet_header ph;
+    picoquic_connection_id_t* log_cnxid;
     int new_context_created = 0;
 
     /* Parse the header and decrypt the segment */
     ret = picoquic_parse_header_and_decrypt(quic, bytes, length, packet_length, addr_from,
         current_time, &ph, &cnx, consumed, &new_context_created);
+
+    log_cnxid = (cnx != NULL) ? &cnx->initial_cnxid : &ph.dest_cnx_id;
 
     /* Verify that the segment coalescing is for the same destination ID */
     if (ret == 0) {
@@ -1781,9 +1780,7 @@ int picoquic_incoming_segment(
 
             /* if needed, log that the packet is received */
             if (quic->F_log != NULL && (cnx == NULL || cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || quic->use_long_log)) {
-                picoquic_log_packet_address(quic->F_log,
-                    picoquic_val64_connection_id((cnx == NULL) ? ph.dest_cnx_id : picoquic_get_logging_cnxid(cnx)),
-                    cnx, addr_from, 1, packet_length, current_time);
+                picoquic_log_pdu(quic->F_log, log_cnxid, 1, current_time, addr_from, packet_length);
             }
         }
         else if (picoquic_compare_connection_id(previous_dest_id, &ph.dest_cnx_id) != 0) {
@@ -1791,10 +1788,11 @@ int picoquic_incoming_segment(
         }
     }
 
-    /* Log the incoming segment */
-    if (ret == 0 && (quic->use_long_log || cnx == NULL ||
+    /* Log the incoming packet */
+    if (ret == 0 && quic->F_log != NULL && (quic->use_long_log || cnx == NULL ||
          cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE)) {
-        picoquic_log_decrypted_segment(quic->F_log, 1, cnx, 1, &ph, bytes, *consumed, current_time);
+        int log_frames = (cnx == NULL) ? 1 : picoquic_supported_versions[cnx->version_index].version != PICOQUIC_TWELFTH_INTEROP_VERSION;
+        picoquic_log_packet(quic->F_log, log_cnxid, 1, current_time, &ph, bytes, *consumed, log_frames);
     }
 
     if (ret == 0) {
@@ -1954,7 +1952,6 @@ int picoquic_incoming_packet(
     size_t consumed_index = 0;
     int ret = 0;
     picoquic_connection_id_t previous_destid = picoquic_null_connection_id;
-
 
     while (consumed_index < packet_length) {
         size_t consumed = 0;

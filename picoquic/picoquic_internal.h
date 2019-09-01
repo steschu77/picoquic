@@ -317,7 +317,7 @@ typedef enum {
  * open sockets, etc.
  */
 typedef struct st_picoquic_quic_t {
-    void * F_log;
+    FILE * F_log;
     char const * cc_log_dir;
     void* tls_master_ctx;
     struct st_ptls_key_exchange_context_t * esni_key_exchange[16];
@@ -352,6 +352,7 @@ typedef struct st_picoquic_quic_t {
 
     picohash_table* table_cnx_by_id;
     picohash_table* table_cnx_by_net;
+    picohash_table* table_log_by_id;
 
     picoquic_packet_t * p_first_packet;
     size_t nb_packets_in_pool;
@@ -978,19 +979,16 @@ int picoquic_parse_header_and_decrypt(
     int * new_context_created);
 
 /* Handling of packet logging */
-void picoquic_log_decrypted_segment(void* F_log, int log_cnxid, picoquic_cnx_t* cnx,
-    int receiving, picoquic_packet_header * ph, uint8_t* bytes, size_t length, uint64_t current_time);
+void picoquic_log_pdu(FILE* f, picoquic_connection_id_t* cid, int receiving, uint64_t current_time,
+    struct sockaddr* addr_peer, size_t packet_length);
+void picoquic_log_packet(FILE* f, picoquic_connection_id_t* cid, int receiving, uint64_t current_time,
+    picoquic_packet_header* ph, uint8_t* bytes, size_t bytes_max, int log_frames);
 
-void picoquic_log_outgoing_segment(void* F_log, int log_cnxid, picoquic_cnx_t* cnx,
+void picoquic_log_outgoing_packet(FILE* f, picoquic_cnx_t* cnx,
     uint8_t * bytes,
     uint64_t sequence_number,
     size_t length,
     uint8_t* send_buffer, size_t send_length, uint64_t current_time);
-
-void picoquic_log_packet_address(FILE* F, uint64_t log_cnxid64, picoquic_cnx_t* cnx,
-    struct sockaddr* addr_peer, int receiving, size_t length, uint64_t current_time);
-
-void picoquic_log_prefix_initial_cid64(FILE* F, uint64_t log_cnxid64);
 
 void picoquic_log_transport_extension(picoquic_cnx_t* cnx);
 void picoquic_log_picotls_ticket(FILE* F, picoquic_connection_id_t cnx_id,
@@ -1001,9 +999,11 @@ void picoquic_log_picotls_ticket(FILE* F, picoquic_connection_id_t cnx_id,
 void picoquic_set_key_log_file(picoquic_quic_t *quic, FILE* F_keylog);
 
 typedef enum {
-    picoquic_log_event_packet_sent = 0x0002,
-    picoquic_log_event_packet_recv = 0x0003,
-    picoquic_log_event_packet_dropped = 0x0004,
+    picoquic_log_event_pdu_sent = 0x0002,
+    picoquic_log_event_pdu_recv = 0x0003,
+
+    picoquic_log_event_packet_sent = 0x0008,
+    picoquic_log_event_packet_recv = 0x0009,
 
     picoquic_log_event_new_connection = 0x0010,
     picoquic_log_event_connection_close = 0x0011,

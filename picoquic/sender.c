@@ -574,7 +574,7 @@ static size_t picoquic_protect_packet(picoquic_cnx_t* cnx,
 
     /* if needed, log the segment before header protection is applied */
     if (cnx->quic->F_log != NULL && (cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || cnx->quic->use_long_log)) {
-        picoquic_log_outgoing_segment(cnx->quic->F_log, 1, cnx,
+        picoquic_log_outgoing_packet(cnx->quic->F_log, cnx,
             bytes, sequence_number, length,
             send_buffer, send_length, current_time);
     }
@@ -3252,9 +3252,8 @@ int picoquic_prepare_packet(picoquic_cnx_t* cnx,
 
     /* if needed, log that the packet is sent */
     if (*send_length > 0 && cnx->quic->F_log != NULL && (cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || cnx->quic->use_long_log)) {
-        picoquic_log_packet_address(cnx->quic->F_log,
-            picoquic_val64_connection_id(picoquic_get_logging_cnxid(cnx)),
-            cnx, (struct sockaddr *)&addr_to_log, 0, *send_length, current_time);
+        picoquic_log_pdu(cnx->quic->F_log, &cnx->initial_cnxid, 0, current_time,
+            (struct sockaddr *)&addr_to_log, *send_length);
     }
 
     /* Update the wake up time for the connection */
