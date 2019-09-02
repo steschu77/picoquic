@@ -412,7 +412,7 @@ int quic_server(const char* server_name, int server_port,
 
                         print_address(F_log, (struct sockaddr*)&client_from, "Client address:",
                             picoquic_get_logging_cnxid(cnx_server));
-                        picoquic_log_transport_extension(cnx_server);
+                        picoquic_log_transport_extension(F_log, cnx_server);
                     }
                 }
             }
@@ -908,7 +908,7 @@ int quic_client(const char* ip_address_text, int server_port,
                     picoquic_get_cnx_state(cnx_client) == picoquic_state_client_ready_start)) {
                     if (established == 0) {
                         if (F_log != NULL) {
-                            picoquic_log_transport_extension(cnx_client);
+                            picoquic_log_transport_extension(F_log, cnx_client);
                         }
                         printf("Connection established. Version = %x, I-CID: %llx\n",
                             picoquic_supported_versions[cnx_client->version_index].version,

@@ -426,8 +426,8 @@ picoquic_stateless_packet_t* picoquic_dequeue_stateless_packet(picoquic_quic_t* 
         quic->pending_stateless_packet = sp->next_packet;
         sp->next_packet = NULL;
 
-        if (quic->F_log != NULL) {
-            picoquic_log_pdu(quic->F_log, &sp->cnxid, 0, picoquic_get_quic_time(quic),
+        if (quic->f_binlog != NULL) {
+            picoquic_log_pdu(quic->f_binlog, &sp->cnxid, 0, picoquic_get_quic_time(quic),
                 (struct sockaddr*)&sp->addr_to, sp->length);
         }
     }
@@ -2187,9 +2187,12 @@ void picoquic_set_fuzz(picoquic_quic_t * quic, picoquic_fuzz_fn fuzz_fn, void * 
     quic->fuzz_ctx = fuzz_ctx;
 }
 
+int picoquic_open_binlog(picoquic_quic_t* quic);
+
 void picoquic_set_cc_log(picoquic_quic_t * quic, char const * cc_log_dir)
 {
     quic->cc_log_dir = cc_log_dir;
+    picoquic_open_binlog(quic);
 }
 
 int picoquic_set_default_connection_id_length(picoquic_quic_t* quic, uint8_t cid_length)

@@ -573,8 +573,8 @@ static size_t picoquic_protect_packet(picoquic_cnx_t* cnx,
     send_length += /* header_length */ h_length;
 
     /* if needed, log the segment before header protection is applied */
-    if (cnx->quic->F_log != NULL && (cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || cnx->quic->use_long_log)) {
-        picoquic_log_outgoing_packet(cnx->quic->F_log, cnx,
+    if (cnx->quic->f_binlog != NULL && (cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || cnx->quic->use_long_log)) {
+        picoquic_log_outgoing_packet(cnx->quic->f_binlog, cnx,
             bytes, sequence_number, length,
             send_buffer, send_length, current_time);
     }
@@ -3251,8 +3251,8 @@ int picoquic_prepare_packet(picoquic_cnx_t* cnx,
     }
 
     /* if needed, log that the packet is sent */
-    if (*send_length > 0 && cnx->quic->F_log != NULL && (cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || cnx->quic->use_long_log)) {
-        picoquic_log_pdu(cnx->quic->F_log, &cnx->initial_cnxid, 0, current_time,
+    if (*send_length > 0 && cnx->quic->f_binlog != NULL && (cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || cnx->quic->use_long_log)) {
+        picoquic_log_pdu(cnx->quic->f_binlog, &cnx->initial_cnxid, 0, current_time,
             (struct sockaddr *)&addr_to_log, *send_length);
     }
 

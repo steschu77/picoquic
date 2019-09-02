@@ -1779,8 +1779,8 @@ int picoquic_incoming_segment(
             *previous_dest_id = ph.dest_cnx_id;
 
             /* if needed, log that the packet is received */
-            if (quic->F_log != NULL && (cnx == NULL || cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || quic->use_long_log)) {
-                picoquic_log_pdu(quic->F_log, log_cnxid, 1, current_time, addr_from, packet_length);
+            if (quic->f_binlog != NULL && (cnx == NULL || cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE || quic->use_long_log)) {
+                picoquic_log_pdu(quic->f_binlog, log_cnxid, 1, current_time, addr_from, packet_length);
             }
         }
         else if (picoquic_compare_connection_id(previous_dest_id, &ph.dest_cnx_id) != 0) {
@@ -1789,10 +1789,10 @@ int picoquic_incoming_segment(
     }
 
     /* Log the incoming packet */
-    if (ret == 0 && quic->F_log != NULL && (quic->use_long_log || cnx == NULL ||
+    if (ret == 0 && quic->f_binlog != NULL && (quic->use_long_log || cnx == NULL ||
          cnx->pkt_ctx[picoquic_packet_context_application].send_sequence < PICOQUIC_LOG_PACKET_MAX_SEQUENCE)) {
         int log_frames = (cnx == NULL) ? 1 : picoquic_supported_versions[cnx->version_index].version != PICOQUIC_TWELFTH_INTEROP_VERSION;
-        picoquic_log_packet(quic->F_log, log_cnxid, 1, current_time, &ph, bytes, *consumed, log_frames);
+        picoquic_log_packet(quic->f_binlog, log_cnxid, 1, current_time, &ph, bytes, *consumed, log_frames);
     }
 
     if (ret == 0) {

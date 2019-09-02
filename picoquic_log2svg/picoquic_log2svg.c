@@ -21,7 +21,9 @@
 #include <stdio.h>
 #include "picoquic_internal.h"
 #include "bytestream.h"
+#include "picohash.h"
 #include "util.h"
+#include "../picoquicfirst/getopt.h"
 
 typedef struct st_bytestream_msg {
     struct st_bytestream_msg * next;
@@ -54,32 +56,241 @@ int read_log(FILE * bin_log, bytestream_msgs * msgs);
 void merge_logs(bytestream_msgs * send_msgs, bytestream_msgs * recv_msgs);
 int render_to_svg(FILE * svg, bytestream_msgs * msgs);
 
+int list_cnxids(FILE* bin_log, const char* fname);
+
+int convert_log(FILE* log0, FILE* log1, const char* log_name);
+int convert_qlog(FILE* log0, const char* log_name);
+int convert_csv(FILE* log0, FILE* log1, const char* csv_name);
+int convert_svg(FILE* log0, FILE* log1, const char* svg_tmp_name, const char* svg_seq_name);
+
+void usage();
+
 int main(int argc, char ** argv)
 {
-    if (argc != 5) {
-        fprintf(stderr, "Usage:\n");
-        fprintf(stderr, "\t%s <input_svg_template.svg> <input_log_file.bin> <output_file.svg>\n", argv[0]);
-        fprintf(stderr, "Convert a binary congestion control log file produced by\n");
-        fprintf(stderr, "picoquic to an svg-image.\n");
-        return -1;
+    int ret = 0;
+
+    const char * log0_name = NULL;
+    const char * log1_name = NULL;
+    const char * out_format = "log";
+    const char * out_file = NULL;
+    const char * svg_tmp_name = NULL;
+    int list_cnxid = 0;
+
+    int opt;
+    while ((opt = getopt(argc, argv, "o:f:t:l")) != -1) {
+        switch (opt) {
+        case 'o':
+            out_file = optarg;
+            break;
+        case 'f':
+            out_format = optarg;
+            break;
+        case 't':
+            svg_tmp_name = optarg;
+            break;
+        case 'l':
+            list_cnxid = 1;
+            break;
+        default:
+            usage();
+            break;
+        }
+    }
+
+    /* Simplified style params */
+    if (optind < argc) {
+        log0_name = argv[optind++];
+    }
+    if (optind < argc) {
+        log1_name = argv[optind++];
     }
 
     debug_printf_push_stream(stderr);
 
     uint32_t log_time = 0;
-    const char* svg_tmp_name = argv[1];
-    const char* svg_seq_name = argv[2];
-    const char* svr_log_name = argv[3];
-    const char* cli_log_name = argv[4];
+    FILE* log0 = log0_name ? picoquic_open_cc_log_file_for_read(log0_name, &log_time) : NULL;
+    FILE* log1 = log1_name ? picoquic_open_cc_log_file_for_read(log1_name, &log_time) : NULL;
+
+    if (log0_name != NULL && log0 == NULL) {
+        fprintf(stderr, "Could not open file %s\n", log0_name);
+        exit(1);
+    }
+
+    if (log1_name != NULL && log1 == NULL) {
+        fprintf(stderr, "Could not open file %s\n", log1_name);
+        exit(1);
+    }
+
+    if (list_cnxid && log0 != NULL) {
+        list_cnxids(log0, log0_name);
+    }
+
+    if (list_cnxid && log1 != NULL) {
+        list_cnxids(log1, log1_name);
+    }
+
+    if (!list_cnxid && log0 != NULL) {
+        if (strcmp(out_format, "log") == 0) {
+            ret = convert_log(log0, log1, out_file);
+        } else if (strcmp(out_format, "csv") == 0) {
+            ret = convert_csv(log0, log1, out_file);
+        } else if (strcmp(out_format, "svg") == 0) {
+            ret = convert_svg(log0, log1, svg_tmp_name, out_file);
+        } else if (strcmp(out_format, "qlog") == 0) {
+            ret = convert_qlog(log0, out_file);
+        } else {
+            fprintf(stderr, "Invalid output format %s\n", out_format);
+            ret = 1;
+        }
+    }
+
+    log0 = picoquic_file_close(log0);
+    log1 = picoquic_file_close(log1);
+    return ret;
+}
+
+int byteread_cid(bytestream* s, picoquic_connection_id_t* cid)
+{
+    memset(cid->id, 0, sizeof(cid->id));
+
+    int ret = byteread_int8(s, &cid->id_len);
+    ret |= byteread_buffer(s, cid->id, cid->id_len);
+    return ret;
+}
+
+/* Hash and compare for CNX hash tables */
+static uint64_t picoquic_cid_hash(void* key)
+{
+    picoquic_connection_id_t* cid = (picoquic_connection_id_t*)key;
+    return picoquic_val64_connection_id(*cid);
+}
+
+static int picoquic_cid_compare(void* key0, void* key1)
+{
+    picoquic_connection_id_t* cid0 = (picoquic_connection_id_t*)key0;
+    picoquic_connection_id_t* cid1 = (picoquic_connection_id_t*)key1;
+
+    return picoquic_compare_connection_id(cid0, cid1);
+}
+
+int add_cnx_id(picohash_table* table_cnx_by_id, picoquic_connection_id_t * cnx_id)
+{
+    int ret = 0;
+
+    picohash_item* item = picohash_retrieve(table_cnx_by_id, cnx_id);
+    if (item == NULL) {
+        picoquic_connection_id_t* key = (picoquic_connection_id_t*)malloc(sizeof(picoquic_connection_id_t));
+        if (key == NULL) {
+            ret = -1;
+        } else {
+            *key = *cnx_id;
+            ret = picohash_insert(table_cnx_by_id, key);
+        }
+    }
+
+    return ret;
+}
+
+int read_binlog(FILE* bin_log, int(*cb)(bytestream*, void*), void* cbptr)
+{
+    int ret = 0;
+    uint8_t head[4];
+    bytestream_buf stream_msg;
+
+    while (ret == 0 && fread(head, sizeof(head), 1, bin_log) > 0) {
+
+        uint32_t len = (head[0] << 24) | (head[1] << 16) | (head[2] << 8) | head[3];
+        if (len > sizeof(stream_msg.buf)) {
+            ret = -1;
+        }
+
+        if (ret == 0 && fread(stream_msg.buf, len, 1, bin_log) <= 0) {
+            ret = -1;
+        }
+
+        if (ret == 0) {
+            bytestream* s = bytestream_buf_init(&stream_msg, len);
+            ret |= cb(s, cbptr);
+        }
+    }
+
+    return ret;
+}
+
+int list_cnxids_cb(bytestream* s, void * cbptr)
+{
+    picoquic_connection_id_t cid;
+    int ret = byteread_cid(s, &cid);
+
+    picohash_table *hash = (picohash_table*)cbptr;
+    ret |= add_cnx_id(hash, &cid);
+
+    return ret;
+}
+
+void print_connection_id(const picoquic_connection_id_t * cid)
+{
+    printf("<");
+    for (uint8_t i = 0; i < cid->id_len; i++) {
+        printf("%02x", cid->id[i]);
+    }
+    printf(">");
+}
+
+int list_cnxids(FILE* bin_log, const char * fname)
+{
+    int ret = 0;
+
+    picohash_table* cnxids = picohash_create(32, picoquic_cid_hash, picoquic_cid_compare);
+    if(read_binlog(bin_log, list_cnxids_cb, cnxids) != 0) {
+        ret = -1;
+    } else {
+        int nb_cnxids = 0;
+
+        for (size_t i = 0; i < cnxids->nb_bin; i++) {
+            for (picohash_item* item = cnxids->hash_bin[i]; item != NULL; item = item->next_in_bin) {
+                nb_cnxids++;
+            }
+        }
+
+        printf("%s contains %d connections:\n", fname, nb_cnxids);
+
+        for (size_t i = 0; i < cnxids->nb_bin; i++) {
+            for (picohash_item* item = cnxids->hash_bin[i]; item != NULL; item = item->next_in_bin) {
+                printf("  ");
+                print_connection_id((picoquic_connection_id_t*)item->key);
+                printf("\n");
+            }
+        }
+    }
+
+    return ret;
+}
+
+int convert_log(FILE* log0, FILE* log1, const char* log_name)
+{
+    return 0;
+}
+
+int convert_qlog(FILE* log0, const char* log_name)
+{
+    return 0;
+}
+
+int convert_csv(FILE* log0, FILE* log1, const char* csv_name)
+{
+    return 0;
+}
+
+int convert_svg(FILE * log0, FILE * log1, const char * svg_tmp_name, const char* svg_seq_name)
+{
     FILE* svg_tmp = picoquic_file_open(svg_tmp_name, "r");
     FILE* svg_seq = picoquic_file_open(svg_seq_name, "w");
-    FILE* svr_log = picoquic_open_cc_log_file_for_read(svr_log_name, &log_time);
-    FILE* cli_log = picoquic_open_cc_log_file_for_read(cli_log_name, &log_time);
 
-    if (svg_tmp != NULL && svr_log != NULL && cli_log != NULL && svg_seq != NULL) {
+    if (log0 != NULL && log1 != NULL && svg_tmp != NULL && svg_seq != NULL) {
 
-        read_log(svr_log, &msgs[0]);
-        read_log(cli_log, &msgs[1]);
+        read_log(log0, &msgs[0]);
+        read_log(log1, &msgs[1]);
         merge_logs(&msgs[0], &msgs[1]);
         merge_logs(&msgs[1], &msgs[0]);
 
@@ -87,8 +298,7 @@ int main(int argc, char ** argv)
         while (fgets(line, sizeof(line), svg_tmp) != NULL) /* read a line */ {
             if (strcmp(line, "#\n") != 0) {
                 fprintf(svg_seq, line);
-            }
-            else {
+            } else {
                 render_to_svg(svg_seq, &msgs[0]);
             }
         }
@@ -96,10 +306,26 @@ int main(int argc, char ** argv)
 
     picoquic_file_close(svg_tmp);
     picoquic_file_close(svg_seq);
-    picoquic_file_close(svr_log);
-    picoquic_file_close(cli_log);
-
     return 0;
+}
+
+int add_log_event_2(bytestream* s, void* cbptr)
+{
+    int ret = 0;
+
+    picoquic_connection_id_t cid;
+    ret |= byteread_cid(s, &cid);
+
+    uint64_t time = 0;
+    ret |= byteread_vint(s, &time);
+
+    uint64_t id = 0;
+    ret |= byteread_vint(s, &id);
+
+    picohash_table* hash = (picohash_table*)cbptr;
+    ret |= add_cnx_id(hash, &cid);
+
+    return ret;
 }
 
 int add_log_event(bytestream_msgs * msgs, bytestream_msg * msg, int rxtx)
@@ -406,3 +632,19 @@ int render_to_svg(FILE * svg, bytestream_msgs * msgs)
     return ret;
 }
 
+void usage()
+{
+    fprintf(stderr, "PicoQUIC log file converter\n");
+    fprintf(stderr, "Usage: picolog <options> [input] \n");
+    fprintf(stderr, "Options:\n");
+    fprintf(stderr, "  -o file               output file name\n");
+    fprintf(stderr, "  -f format             output format:\n");
+    fprintf(stderr, "                        -f log: generate text log file\n");
+    fprintf(stderr, "                        -f csv: generate CC csv file\n");
+    fprintf(stderr, "                        -f svg: generate flow graph\n");
+    fprintf(stderr, "                        -f qlog: generate qlog json file\n");
+    fprintf(stderr, "  -t file               template svg file for svg output\n");
+    fprintf(stderr, "  -l                    list all connections by connection id\n");
+
+    exit(1);
+}

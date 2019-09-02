@@ -18,5 +18,8 @@
     <ClCompile Include="picoquic_log2svg.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\picoquicfirst\getopt.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

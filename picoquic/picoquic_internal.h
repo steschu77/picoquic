@@ -318,6 +318,7 @@ typedef enum {
  */
 typedef struct st_picoquic_quic_t {
     FILE * F_log;
+    FILE * f_binlog;
     char const * cc_log_dir;
     void* tls_master_ctx;
     struct st_ptls_key_exchange_context_t * esni_key_exchange[16];
@@ -990,7 +991,7 @@ void picoquic_log_outgoing_packet(FILE* f, picoquic_cnx_t* cnx,
     size_t length,
     uint8_t* send_buffer, size_t send_length, uint64_t current_time);
 
-void picoquic_log_transport_extension(picoquic_cnx_t* cnx);
+void picoquic_log_transport_extension(FILE * f, picoquic_cnx_t* cnx);
 void picoquic_log_picotls_ticket(FILE* F, picoquic_connection_id_t cnx_id,
     uint8_t* ticket, uint16_t ticket_length);
 
