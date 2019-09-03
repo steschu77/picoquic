@@ -123,6 +123,17 @@ void picohash_delete(picohash_table* hash_table, int delete_key_too)
     free(hash_table);
 }
 
+int picohash_iterate(picohash_table* table, int(*cb)(void*, void*), void* cbptr)
+{
+    int ret = 0;
+    for (size_t i = 0; ret == 0 && i < table->nb_bin; i++) {
+        for (picohash_item* item = table->hash_bin[i]; ret == 0 && item != NULL; item = item->next_in_bin) {
+            ret = cb(item->key, cbptr);
+        }
+    }
+    return ret;
+}
+
 uint64_t picohash_bytes(uint8_t* key, uint32_t length)
 {
     uint64_t hash = 0xDEADBEEF;

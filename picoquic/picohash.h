@@ -58,6 +58,8 @@ int picohash_insert(picohash_table* hash_table, void* key);
 
 void picohash_item_delete(picohash_table* hash_table, picohash_item* item, int delete_key_too);
 
+int picohash_iterate(picohash_table* table, int(*cb)(void*, void*), void* cbptr);
+
 void picohash_delete(picohash_table* hash_table, int delete_key_too);
 
 uint64_t picohash_bytes(uint8_t* key, uint32_t length);
