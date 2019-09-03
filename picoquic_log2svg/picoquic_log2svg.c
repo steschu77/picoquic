@@ -52,32 +52,50 @@ inline int sgn(int sign, int value) {
     return (1 - 2 * sign) * value;
 }
 
+/* Hash and compare for CNX hash tables */
+static uint64_t picoquic_cid_hash(void* key)
+{
+    picoquic_connection_id_t* cid = (picoquic_connection_id_t*)key;
+    return picoquic_val64_connection_id(*cid);
+}
+
+static int picoquic_cid_compare(void* key0, void* key1)
+{
+    picoquic_connection_id_t* cid0 = (picoquic_connection_id_t*)key0;
+    picoquic_connection_id_t* cid1 = (picoquic_connection_id_t*)key1;
+
+    return picoquic_compare_connection_id(cid0, cid1);
+}
+
 int read_log(FILE * bin_log, bytestream_msgs * msgs);
 void merge_logs(bytestream_msgs * send_msgs, bytestream_msgs * recv_msgs);
 int render_to_svg(FILE * svg, bytestream_msgs * msgs);
 
-int list_cnxids(FILE* bin_log, const char* fname);
+int list_cnxids(FILE* bin_log, const char* fname, picohash_table* cids);
 
-int convert_log(FILE* log0, FILE* log1, const char* log_name);
-int convert_qlog(FILE* log0, const char* log_name);
-int convert_csv(FILE* log0, FILE* log1, const char* csv_name);
-int convert_svg(FILE* log0, FILE* log1, const char* svg_tmp_name, const char* svg_seq_name);
+int convert_logs(FILE* binlog, picohash_table* cids, const char* log_dir);
+int convert_qlog(FILE* log0, picohash_table* cids, const char* log_name);
+int convert_csv(FILE* log0, FILE* log1, picohash_table* cids, const char* csv_name);
+int convert_svg(FILE* log0, FILE* log1, picohash_table* cids, const char* svg_tmp_name, const char* svg_seq_name);
 
 void usage();
 
 int main(int argc, char ** argv)
 {
-    int ret = 0;
-
     const char * log0_name = NULL;
     const char * log1_name = NULL;
     const char * out_format = "log";
     const char * out_file = NULL;
     const char * svg_tmp_name = NULL;
+
     int list_cnxid = 0;
+    int all = 0;
+
+    picohash_table* cids = picohash_create(32, picoquic_cid_hash, picoquic_cid_compare);
+    int ret = cids == NULL ? -1 : 0;
 
     int opt;
-    while ((opt = getopt(argc, argv, "o:f:t:l")) != -1) {
+    while ((opt = getopt(argc, argv, "a:o:f:t:l")) != -1) {
         switch (opt) {
         case 'o':
             out_file = optarg;
@@ -90,6 +108,9 @@ int main(int argc, char ** argv)
             break;
         case 'l':
             list_cnxid = 1;
+            break;
+        case 'a':
+            all = 1;
             break;
         default:
             usage();
@@ -113,64 +134,62 @@ int main(int argc, char ** argv)
 
     if (log0_name != NULL && log0 == NULL) {
         fprintf(stderr, "Could not open file %s\n", log0_name);
-        exit(1);
+        ret = -1;
     }
 
     if (log1_name != NULL && log1 == NULL) {
         fprintf(stderr, "Could not open file %s\n", log1_name);
-        exit(1);
+        ret = -1;
     }
 
-    if (list_cnxid && log0 != NULL) {
-        list_cnxids(log0, log0_name);
+    if (ret == 0 && (all || list_cnxid) && log0 != NULL) {
+        ret |= list_cnxids(log0, log0_name, cids);
     }
 
-    if (list_cnxid && log1 != NULL) {
-        list_cnxids(log1, log1_name);
+    if (ret == 0 && (all || list_cnxid) && log1 != NULL) {
+        ret |= list_cnxids(log1, log1_name, cids);
     }
 
-    if (!list_cnxid && log0 != NULL) {
+    if (ret == 0 && out_file != NULL && log0 != NULL) {
+
         if (strcmp(out_format, "log") == 0) {
-            ret = convert_log(log0, log1, out_file);
+            ret = convert_logs(log0, cids, out_file);
         } else if (strcmp(out_format, "csv") == 0) {
-            ret = convert_csv(log0, log1, out_file);
+            ret = convert_csv(log0, log1, cids, out_file);
         } else if (strcmp(out_format, "svg") == 0) {
-            ret = convert_svg(log0, log1, svg_tmp_name, out_file);
+            ret = convert_svg(log0, log1, cids, svg_tmp_name, out_file);
         } else if (strcmp(out_format, "qlog") == 0) {
-            ret = convert_qlog(log0, out_file);
+            ret = convert_qlog(log0, cids, out_file);
         } else {
             fprintf(stderr, "Invalid output format %s\n", out_format);
             ret = 1;
         }
     }
 
+    picohash_delete(cids, 1);
     log0 = picoquic_file_close(log0);
     log1 = picoquic_file_close(log1);
     return ret;
 }
 
-int byteread_cid(bytestream* s, picoquic_connection_id_t* cid)
+int byteread_addr(bytestream* s, struct sockaddr* addr)
 {
-    memset(cid->id, 0, sizeof(cid->id));
+    uint64_t family = 0;
+    int ret = byteread_vint(s, &family);
 
-    int ret = byteread_int8(s, &cid->id_len);
-    ret |= byteread_buffer(s, cid->id, cid->id_len);
+    if (ret == 0 && family == AF_INET) {
+        struct sockaddr_in* s4 = (struct sockaddr_in*)addr;
+        s4->sin_family = AF_INET;
+        ret |= byteread_buffer(s, &s4->sin_addr, 4);
+        ret |= byteread_int16(s, &s4->sin_port);
+    }
+    else {
+        struct sockaddr_in6* s6 = (struct sockaddr_in6*)addr;
+        s6->sin6_family = AF_INET6;
+        ret |= byteread_buffer(s, &s6->sin6_addr, 16);
+        ret |= byteread_int16(s, &s6->sin6_port);
+    }
     return ret;
-}
-
-/* Hash and compare for CNX hash tables */
-static uint64_t picoquic_cid_hash(void* key)
-{
-    picoquic_connection_id_t* cid = (picoquic_connection_id_t*)key;
-    return picoquic_val64_connection_id(*cid);
-}
-
-static int picoquic_cid_compare(void* key0, void* key1)
-{
-    picoquic_connection_id_t* cid0 = (picoquic_connection_id_t*)key0;
-    picoquic_connection_id_t* cid1 = (picoquic_connection_id_t*)key1;
-
-    return picoquic_compare_connection_id(cid0, cid1);
 }
 
 int add_cnx_id(picohash_table* table_cnx_by_id, picoquic_connection_id_t * cnx_id)
@@ -196,6 +215,8 @@ int read_binlog(FILE* bin_log, int(*cb)(bytestream*, void*), void* cbptr)
     int ret = 0;
     uint8_t head[4];
     bytestream_buf stream_msg;
+
+    fseek(bin_log, 16, SEEK_SET);
 
     while (ret == 0 && fread(head, sizeof(head), 1, bin_log) > 0) {
 
@@ -237,18 +258,19 @@ void print_connection_id(const picoquic_connection_id_t * cid)
     printf(">");
 }
 
-int list_cnxids(FILE* bin_log, const char * fname)
+int list_cnxids(FILE* bin_log, const char * fname, picohash_table* hash)
 {
     int ret = 0;
 
     picohash_table* cnxids = picohash_create(32, picoquic_cid_hash, picoquic_cid_compare);
-    if(read_binlog(bin_log, list_cnxids_cb, cnxids) != 0) {
+    if (read_binlog(bin_log, list_cnxids_cb, cnxids) != 0) {
         ret = -1;
     } else {
         int nb_cnxids = 0;
 
         for (size_t i = 0; i < cnxids->nb_bin; i++) {
             for (picohash_item* item = cnxids->hash_bin[i]; item != NULL; item = item->next_in_bin) {
+                add_cnx_id(hash, (picoquic_connection_id_t*)item->key);
                 nb_cnxids++;
             }
         }
@@ -264,25 +286,188 @@ int list_cnxids(FILE* bin_log, const char * fname)
         }
     }
 
+    picohash_delete(cnxids, 1);
     return ret;
 }
 
-int convert_log(FILE* log0, FILE* log1, const char* log_name)
+void picoquic_log_prefix_initial_cid64(FILE * f, const picoquic_connection_id_t * cid)
+{
+    if (!picoquic_is_connection_id_null(cid)) {
+        for (uint8_t i = 0; i < 8; i++) {
+            fprintf(f, "%02x", cid->id[i]);
+        }
+    }
+}
+
+void picoquic_log_packet_address(FILE * f, const picoquic_connection_id_t* cid, struct sockaddr* addr_peer, int receiving, size_t length, uint64_t current_time)
+{
+    uint64_t delta_t = 0;
+    uint64_t time_sec = 0;
+    uint32_t time_usec = 0;
+
+    picoquic_log_prefix_initial_cid64(f, cid);
+
+    fprintf(f, (receiving) ? "Receiving %d bytes from " : "Sending %zu bytes to ", length);
+
+    if (addr_peer->sa_family == AF_INET) {
+        struct sockaddr_in* s4 = (struct sockaddr_in*)addr_peer;
+        uint8_t* addr = (uint8_t*)& s4->sin_addr;
+
+        fprintf(f, "%d.%d.%d.%d:%d",
+            addr[0], addr[1], addr[2], addr[3],
+            ntohs(s4->sin_port));
+    }
+    else {
+        struct sockaddr_in6* s6 = (struct sockaddr_in6*)addr_peer;
+        uint8_t* addr = (uint8_t*)& s6->sin6_addr;
+
+        fprintf(f, "[");
+        for (int i = 0; i < 8; i++) {
+            if (i != 0) {
+                fprintf(f, ":");
+            }
+
+            if (addr[2 * i] != 0) {
+                fprintf(f, "%x%02x", addr[2 * i], addr[(2 * i) + 1]);
+            }
+            else {
+                fprintf(f, "%x", addr[(2 * i) + 1]);
+            }
+        }
+        fprintf(f, "]:%d\n", ntohs(s6->sin6_port));
+    }
+
+    time_sec = current_time / 1000000;
+    time_usec = (uint32_t)(current_time % 1000000);
+
+    fprintf(f, " at T=%llu.%06d (%llx)\n",
+        (unsigned long long)time_sec, time_usec,
+        (unsigned long long)current_time);
+}
+
+int read_packet_header(bytestream * s, picoquic_packet_header * ph)
+{
+    int ret = 0;
+
+    /* packet information */
+    uint8_t header_flags = 0;
+    byteread_int8(s, &header_flags);
+    ph->spin = (header_flags & 2) != 0;
+    ph->key_phase = (header_flags & 1) != 0;
+
+    uint64_t payload_length = 0;
+    byteread_vint(s, &payload_length);
+    ph->payload_length = payload_length;
+
+    uint64_t ptype;
+    byteread_vint(s, &ptype);
+    ph->ptype = (picoquic_packet_type_enum)ptype;
+
+    byteread_vint(s, &ph->pn64);
+
+    byteread_cid(s, &ph->dest_cnx_id);
+    byteread_cid(s, &ph->srce_cnx_id);
+
+    if (ptype != picoquic_packet_1rtt_protected &&
+        ptype != picoquic_packet_version_negotiation) {
+        byteread_int32(s, &ph->vn);
+    }
+
+    if (ptype == picoquic_packet_initial) {
+        uint64_t token_length = 0;
+        byteread_vint(s, &token_length);
+        bytestream_skip(s, token_length);
+    }
+
+    return ret;
+}
+
+struct log_file_ctx_t {
+    FILE * f;
+    const picoquic_connection_id_t * cid;
+};
+
+int convert_log_file_cb(bytestream * s, void * cbptr)
+{
+    const struct log_file_ctx_t * ctx = (struct log_file_ctx_t*)cbptr;
+
+    int ret = 0;
+
+    picoquic_connection_id_t cid;
+    ret |= byteread_cid(s, &cid);
+
+    if (picoquic_compare_connection_id(&cid, ctx->cid) != 0) {
+        return 0;
+    }
+
+    uint64_t time = 0;
+    ret |= byteread_vint(s, &time);
+
+    uint64_t id = 0;
+    ret |= byteread_vint(s, &id);
+
+    if (id == picoquic_log_event_packet_recv || id == picoquic_log_event_packet_sent) {
+        picoquic_packet_header ph;
+        ret |= read_packet_header(s, &ph);
+    }
+
+    fprintf(ctx->f, "%"PRIi64" id:%" PRIi64 "\n", time, id);
+
+    return ret;
+}
+
+int convert_log_file(FILE * binlog, FILE * log, const picoquic_connection_id_t * cid)
+{
+    if (binlog == NULL || log == NULL) {
+        return -1;
+    } else {
+        struct log_file_ctx_t ctx = { log, cid };
+        return read_binlog(binlog, convert_log_file_cb, &ctx);
+    }
+}
+
+int convert_log(FILE * binlog, const picoquic_connection_id_t * cid, const char * log_dir)
+{
+    int ret = 0;
+    char log_name[512];
+
+    char cid_str[2 * PICOQUIC_CONNECTION_ID_MAX_SIZE + 1];
+    picoquic_print_connection_id_hexa(cid_str, sizeof(cid_str), cid);
+
+    if (picoquic_sprintf(log_name, sizeof(log_name), NULL, "%s%c%s.log", log_dir, PICOQUIC_FILE_SEPARATOR, cid_str) != 0) {
+        DBG_PRINTF("Cannot format file name into folder %s, id_len = %d\n", log_dir, cid->id_len);
+        ret = -1;
+    }
+
+    FILE* log = picoquic_file_open(log_name, "w");
+    ret |= convert_log_file(binlog, log, cid);
+    log = picoquic_file_close(log);
+    return ret;
+}
+
+int convert_logs(FILE* binlog, picohash_table* cids, const char* log_dir)
+{
+    int ret = 0;
+
+    for (size_t i = 0; ret == 0 && i < cids->nb_bin; i++) {
+        for (picohash_item* item = cids->hash_bin[i]; ret == 0 && item != NULL; item = item->next_in_bin) {
+            ret = convert_log(binlog, (picoquic_connection_id_t*)item->key, log_dir);
+        }
+    }
+    return ret;
+}
+
+int convert_qlog(FILE* log0, picohash_table* cids, const char* log_name)
 {
     return 0;
 }
 
-int convert_qlog(FILE* log0, const char* log_name)
+int convert_csv(FILE* log0, FILE* log1, picohash_table* cids, const char* csv_name)
 {
     return 0;
 }
 
-int convert_csv(FILE* log0, FILE* log1, const char* csv_name)
-{
-    return 0;
-}
-
-int convert_svg(FILE * log0, FILE * log1, const char * svg_tmp_name, const char* svg_seq_name)
+int convert_svg(FILE * log0, FILE * log1, picohash_table * cids, const char * svg_tmp_name, const char * svg_seq_name)
 {
     FILE* svg_tmp = picoquic_file_open(svg_tmp_name, "r");
     FILE* svg_seq = picoquic_file_open(svg_seq_name, "w");
@@ -556,7 +741,7 @@ int log_event(FILE * svg, bytestream_msg * msg)
 
         bytestream_skip(s, length);
 
-        uint64_t ftype, epoch, path_seq;
+        uint64_t ftype, path_seq;
         ret |= byteread_vint(frame, &ftype);
 
         if (ftype >= picoquic_frame_type_stream_range_min &&

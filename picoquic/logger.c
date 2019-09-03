@@ -30,22 +30,7 @@
 #include "bytestream.h"
 #include "tls_api.h"
 
-int bytewrite_cid(bytestream* s, const picoquic_connection_id_t* cid)
-{
-    int ret = bytewrite_int8(s, cid->id_len);
-    ret |= bytewrite_buffer(s, cid->id, cid->id_len);
-    return ret;
-}
-
-int bytewrite_cstr(bytestream* s, const char* cstr)
-{
-    size_t l_cstr = cstr != NULL ? strlen(cstr) : 0;
-    int ret = bytewrite_vint(s, l_cstr);
-    ret |= bytewrite_buffer(s, cstr, l_cstr);
-    return ret;
-}
-
-int bytewrite_addr(bytestream* s, struct sockaddr* addr)
+int bytewrite_addr(bytestream* s, const struct sockaddr* addr)
 {
     int ret = bytewrite_vint(s, addr->sa_family);
     if (addr->sa_family == AF_INET) {
