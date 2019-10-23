@@ -167,6 +167,34 @@ namespace UnitTest1
             Assert::AreEqual(ret, 0);
         }
 
+        TEST_METHOD(test_binlog_csv)
+        {
+            int ret = binlog_csv_test();
+
+            Assert::AreEqual(ret, 0);
+        }
+
+        TEST_METHOD(test_binlog_qlog)
+        {
+            int ret = binlog_qlog_test();
+
+            Assert::AreEqual(ret, 0);
+        }
+
+        TEST_METHOD(test_binlog_svg)
+        {
+            int ret = binlog_svg_test();
+
+            Assert::AreEqual(ret, 0);
+        }
+
+        TEST_METHOD(test_binlog_log)
+        {
+            int ret = binlog_log_test();
+
+            Assert::AreEqual(ret, 0);
+        }
+
         TEST_METHOD(test_TlsStreamFrame)
         {
             int ret = TlsStreamFrameTest();

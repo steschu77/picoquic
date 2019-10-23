@@ -814,6 +814,26 @@ int binlog_test()
     return 0;
 }
 
+int binlog_csv_test()
+{
+    return 0;
+}
+
+int binlog_qlog_test()
+{
+    return 0;
+}
+
+int binlog_svg_test()
+{
+    return 0;
+}
+
+int binlog_log_test()
+{
+    return 0;
+}
+
 /* Basic test of connection ID stash, part of migration support  */
 static const picoquic_cnxid_stash_t stash_test_case[] = {
     { NULL,  1,{ { 0, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }, 4 },
